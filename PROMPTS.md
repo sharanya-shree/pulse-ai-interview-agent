@@ -324,7 +324,132 @@ Before finishing, verify that the project structure is coherent and that the Fas
 Again: THIS TASK IS ONLY THE FOUNDATION FOR PERSON 1.
 Do not build the complete application in one shot.
 ```
+## Person 2
+
 ### Prompt 2 — ABTalks Resource Analysis
+
+```text
+We are now implementing the Person 2 backend AI interview workflow.
+
+Before making changes, inspect the existing backend implementation and preserve the existing POST /api/interview API contract and Pydantic schemas.
+
+Implement ONLY the interview state/workflow service layer for now.
+
+Requirements:
+
+1. Create the interview agent workflow inside:
+   backend/app/services/
+
+2. Use LangGraph for the interview state workflow.
+
+3. The workflow must maintain these state concepts:
+   - session_id
+   - candidate information
+   - conversation history
+   - completed curriculum days
+   - curriculum topics/questions already covered
+   - number of meaningful questions asked
+   - current question
+   - interview completion status
+   - collected information needed for final feedback
+
+4. The interview should:
+   - personalize questions using the candidate profile and completedDays
+   - target at least 10 meaningful questions
+   - cover at least 6 unique curriculum days
+   - maintain multi-turn conversation context
+   - generate follow-up questions based on the candidate's previous answer
+   - avoid repeatedly asking the same question/topic
+   - eventually produce structured feedback with:
+     summary
+     strengths
+     gaps
+     next
+
+5. Use the existing docs/abtalks/curriculum.json and candidate schema as the source of curriculum/candidate data. Do not invent a different candidate schema.
+
+6. Do NOT implement the frontend.
+
+7. Do NOT change PROMPTS.md.
+
+8. Do NOT change the public API request/response schema unless absolutely required by the existing technical specification.
+
+9. Do not commit anything.
+
+10. Before writing code, inspect:
+    - backend/app/models/interview.py
+    - backend/app/routes/interview.py
+    - backend/app/models/db.py
+    - backend/app/core/database.py
+    - backend/app/core/config.py
+    - backend/app/main.py
+    - backend/requirements.txt
+
+11. If dependencies such as LangGraph or the required LLM SDK are missing, identify them and add only the necessary dependency entries to backend/requirements.txt.
+
+12. Keep the implementation modular so the existing route can call the service cleanly.
+
+After implementation:
+- show me every file you changed
+- explain the workflow/state design
+- show the important code changes
+- do NOT commit
+- do NOT modify unrelated files
+-------------------------------------------------------------------------
+
+We have reviewed the Person 2 implementation. Do NOT commit anything.
+
+Before making changes, verify the implementation against the actual PS2 requirements and existing API contract.
+
+Focus specifically on these issues:
+
+1. LLM model configuration:
+   - Do not hardcode a model that conflicts with the project's agreed LLM integration.
+   - Use the existing application configuration/environment approach.
+   - Do not add or expose any API key.
+   - The workflow must continue to work without OPENAI_API_KEY using the existing mock/fallback behavior.
+
+2. Interview progression:
+   - Verify that a complete interview actually reaches BOTH:
+       a) at least 10 meaningful questions
+       b) at least 6 unique curriculum days
+   - Do not merely rely on the termination condition; verify the generated sequence.
+   - Ensure follow-up questions are genuinely based on the candidate's previous answer/context.
+   - Ensure the same question is not repeatedly generated.
+
+3. Curriculum:
+   - Verify that questions use the official docs/abtalks/curriculum.json data.
+   - Do not invent or replace the supplied curriculum schema.
+
+4. Session state:
+   - Verify that an initial POST with sessionId + candidate creates the session.
+   - Verify subsequent POST requests using only sessionId + message continue the same conversation.
+   - Verify conversation history, questions asked, covered curriculum days and feedback are persisted.
+
+5. Feedback:
+   - Verify completion produces exactly the required structured fields:
+       summary
+       strengths
+       gaps
+       next
+
+6. Tests:
+   Add focused tests for the above behavior, especially:
+   - initial interview turn
+   - subsequent turn with the same sessionId
+   - 10-question / 6-unique-day completion
+   - structured feedback
+   - behavior without OPENAI_API_KEY
+
+7. Keep the existing POST /api/interview request and response contract unchanged unless the technical specification absolutely requires otherwise.
+
+After making changes:
+- show every changed file
+- explain what was fixed
+- run the complete pytest suite
+- show the complete pytest result
+- DO NOT commit
+```
 
 The official ABTalks PS2 resources have now been added to the repository under docs/abtalks/.
 
