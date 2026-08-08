@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pulse AI Interview Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero-card">
+        <div>
+          <p class="eyebrow">Vicodathon Demo</p>
+          <h1>Pulse AI Interview Agent</h1>
+          <p class="hero-copy">
+            Run a polished technical interview experience using the existing backend API.
+          </p>
+        </div>
+        <div class="hero-badge" id="backendStatus">Connecting to backend…</div>
+      </header>
+
+      <main class="layout-grid">
+        <section class="panel" id="selectionPanel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">Step 1</p>
+              <h2>Select a candidate</h2>
+            </div>
+            <button id="newInterviewButton" class="secondary-btn hidden">Start over</button>
+          </div>
+
+          <div id="candidateGrid" class="candidate-grid"></div>
+
+          <div id="candidateSummary" class="summary-card hidden">
+            <div class="summary-top">
+              <div>
+                <p class="section-label">Profile</p>
+                <h3 id="summaryName">Candidate name</h3>
+              </div>
+              <span id="summaryBadge" class="chip">Ready</span>
+            </div>
+            <div class="summary-meta">
+              <div>
+                <span class="meta-label">Role</span>
+                <strong id="summaryRole">-</strong>
+              </div>
+              <div>
+                <span class="meta-label">Experience</span>
+                <strong id="summaryExperience">-</strong>
+              </div>
+              <div>
+                <span class="meta-label">Completed days</span>
+                <strong id="summaryDays">-</strong>
+              </div>
+            </div>
+            <p id="summaryText" class="summary-text"></p>
+            <button id="startInterviewButton" class="primary-btn">Start interview</button>
+          </div>
+        </section>
+
+        <section class="panel interview-panel hidden" id="interviewPanel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">Live interview</p>
+              <h2 id="interviewTitle">Interview in progress</h2>
+            </div>
+            <button id="restartInterviewButton" class="secondary-btn">New interview</button>
+          </div>
+
+          <div class="progress-card">
+            <div class="progress-header">
+              <span id="progressLabel">Question 0 of 10</span>
+              <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="progressBar" class="progress-bar"></div>
+            </div>
+          </div>
+
+          <div id="messageList" class="message-list"></div>
+
+          <form id="answerForm" class="answer-form">
+            <label for="answerInput" class="sr-only">Your answer</label>
+            <textarea
+              id="answerInput"
+              rows="4"
+              placeholder="Type your response to the interviewer…"
+            ></textarea>
+            <div class="form-actions">
+              <p id="formHint" class="form-hint">Answer thoughtfully and continue until the interview completes.</p>
+              <button id="submitAnswerButton" class="primary-btn" type="submit">Submit answer</button>
+            </div>
+          </form>
+        </section>
+      </main>
+
+      <section class="panel completion-panel hidden" id="completionPanel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">Interview complete</p>
+            <h2>Structured feedback</h2>
+          </div>
+          <button id="finishNewInterviewButton" class="secondary-btn">Start another</button>
+        </div>
+        <div id="feedbackContent" class="feedback-content"></div>
+      </section>
+    </div>
+
+    <script src="./api.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

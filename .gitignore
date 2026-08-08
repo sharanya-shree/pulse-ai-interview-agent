@@ -54,6 +54,12 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Local databases
+*.db
+backend/dev.db
+backend/pulse_ai.db
+backend/test.db
+
 # IDEs & Editors
 .vscode/
 .idea/

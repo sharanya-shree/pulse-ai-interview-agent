@@ -1,5 +1,5 @@
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CandidateData(BaseModel):
@@ -34,6 +34,13 @@ class InterviewRequest(BaseModel):
     session_id: str = Field(..., alias="sessionId")
     candidate: Optional[Dict[str, Any]] = None
     message: Optional[str] = None
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A non-empty session_id is required.")
+        return value
 
     @model_validator(mode="after")
     def validate_payload(self):

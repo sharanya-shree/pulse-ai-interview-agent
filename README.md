@@ -18,17 +18,14 @@ The objective of **Pulse AI Interview Agent** is to conduct realistic, multi-tur
 
 ---
 
-## Current Architecture & Scope (Person 1 / Foundation Phase)
+## Current Architecture & Scope
 
-This repository currently establishes the **Monorepo Foundation & Backend API Specification**:
-- Modular project structure for `frontend`, `backend`, `data`, and configuration files.
-- FastAPI backend application with exact `POST /api/interview` schema validation per Technical Specification.
-- Pydantic v2 request/response models (`InterviewRequest`, `InterviewResponse`, `InterviewFeedback`, `CandidateData`).
-- PostgreSQL state persistence models (`InterviewSessionModel`) for tracking session history, topics covered, questions asked, and feedback.
-- Environment configuration via `.env.example` (no secrets committed).
-- Pytest testing harness.
-
-> **Note**: The complete AI agent orchestration (LangGraph workflow) and frontend UI components will be implemented in subsequent development phases by Person 2 and Person 3.
+This repository now includes a working hackathon demo experience:
+- A FastAPI backend with the validated `POST /api/interview` and `GET /api/candidates` endpoints.
+- A polished static frontend that loads official candidates, starts interviews, submits answers, and displays structured feedback.
+- LangGraph-backed interview workflow with duplicate-question protection, follow-up handling, and session persistence.
+- Environment configuration via `.env.example` with no secrets committed.
+- Pytest validation for the backend workflow.
 
 ---
 
@@ -82,76 +79,44 @@ pulse-ai-interview-agent/
 
 - Python 3.10+
 - `pip` / `venv`
-- PostgreSQL database (optional for foundation stage; default SQLite/Postgres URL configurable via `.env`)
+- PostgreSQL database (required for the backend session layer; configure `DATABASE_URL` in `.env`)
 
 ### Backend Setup
 
-1. **Navigate to the backend directory:**
-   ```bash
-   cd backend
-   ```
-
-2. **Create and activate a virtual environment:**
-   ```bash
-   python -m venv .venv
-
-   # On Windows (PowerShell)
-   .venv\Scripts\Activate.ps1
-
-   # On Linux/macOS
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies:**
+1. Navigate to the backend directory.
+2. Create and activate a virtual environment.
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-
-4. **Set up Environment Variables:**
-   Copy `.env.example` to `.env` in the root or backend directory:
-   ```bash
-   cp ../.env.example .env
-   ```
-
-5. **Run the FastAPI Server:**
+4. Copy `.env.example` to `.env` and adjust values as needed.
+5. Run the FastAPI server:
    ```bash
    uvicorn app.main:app --reload --port 8000
    ```
-   The backend API will be available at:
-   - Server: `http://localhost:8000`
-   - Interactive Swagger Docs: `http://localhost:8000/docs`
-   - Health Check: `http://localhost:8000/health`
 
----
+The backend API will be available at:
+- http://localhost:8000
+- http://localhost:8000/docs
+- http://localhost:8000/health
 
-## Running Backend Tests
+### Frontend Setup
 
-Run the Pytest suite from the `backend/` directory:
+1. Serve the static frontend from the `frontend/` directory:
+   ```bash
+   cd frontend
+   python -m http.server 8080
+   ```
+2. Open http://localhost:8080 in a browser.
+
+### Running Tests
+
+Run the backend test suite from the `backend/` directory:
 
 ```bash
-pytest
+python -m pytest -q
 ```
 
----
+### Environment Variables
 
-## Environment Variables Required
-
-Place these in your local `.env` file (refer to `.env.example`):
-
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/pulse_ai_db
-OPENAI_API_KEY=your_openai_api_key_here
-ENVIRONMENT=development
-PORT=8000
-HOST=0.0.0.0
-```
-
----
-
-## Data Placement Note
-
-Please place the event organizer dataset files inside the `data/` directory:
-- `data/curriculum.json`
-- `data/candidates.json`
-
-*(Do not commit secret credentials or fake dataset files).*
+Use the values from `.env.example` and keep secrets in local `.env` only. The frontend uses `NEXT_PUBLIC_API_URL` and should not receive any API keys or database credentials.

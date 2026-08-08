@@ -1,41 +1,30 @@
 # Pulse AI Interview Agent — Frontend
 
-This directory is designated for the Next.js frontend web application for **Pulse AI Interview Agent**.
+This directory contains the static demo frontend for the hackathon interview experience.
 
-## Tech Stack (Locked)
+## What it does
 
-- **Framework**: Next.js (App Router, React, TypeScript)
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui
+- Loads the official candidate catalog from the backend.
+- Lets a user pick a candidate and start a live interview.
+- Sends each answer back to the existing FastAPI interview endpoint.
+- Shows progress, chat messages, and final structured feedback.
 
-## Backend API Integration
+## Run locally
 
-The frontend connects to the backend FastAPI endpoint:
+1. Start the backend:
+   ```bash
+   cd backend
+   python -m uvicorn app.main:app --reload --port 8000
+   ```
 
-- **Endpoint**: `POST http://localhost:8000/api/interview`
+2. Serve the frontend from this directory:
+   ```bash
+   cd frontend
+   python -m http.server 8080
+   ```
 
-### Request Examples
+3. Open http://localhost:8080 in a browser.
 
-```typescript
-// Initial turn
-const res = await fetch("http://localhost:8000/api/interview", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    sessionId: "session-123",
-    candidate: candidateProfileData,
-  }),
-});
+## Configuration
 
-// Subsequent turns
-const res = await fetch("http://localhost:8000/api/interview", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    sessionId: "session-123",
-    message: candidateAnswer,
-  }),
-});
-```
-
-> **Note**: Full Next.js client interface and interactive components will be implemented in subsequent project phases.
+The frontend uses the `NEXT_PUBLIC_API_URL` value by default, falling back to `http://localhost:8000`.

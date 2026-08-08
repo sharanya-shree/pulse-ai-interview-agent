@@ -1,16 +1,24 @@
 from typing import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from app.core.config import settings
 
-# Engine configuration (uses sqlite in-memory fallback for testing if postgresql driver is not available/configured)
-database_url = settings.DATABASE_URL
-if database_url.startswith("postgresql://") or database_url.startswith("postgres://"):
-    # SQLAlchemy 2.0+ standard connection string handling
-    engine = create_engine(database_url, pool_pre_ping=True)
-else:
-    engine = create_engine(database_url)
 
+def _create_engine(database_url: str):
+    if database_url.startswith("postgresql://") or database_url.startswith("postgres://"):
+        try:
+            engine = create_engine(database_url, pool_pre_ping=True)
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            return engine
+        except Exception:
+            fallback_url = "sqlite:///./pulse_ai.db"
+            return create_engine(fallback_url)
+
+    return create_engine(database_url)
+
+
+engine = _create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

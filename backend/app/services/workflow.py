@@ -1,4 +1,5 @@
 import json
+import re
 from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
@@ -25,6 +26,90 @@ class AgentState(TypedDict):
 # Initialize CurriculumService helper
 curriculum_service = CurriculumService()
 
+
+def _normalize_text(value: Optional[str]) -> str:
+    return (value or "").strip()
+
+
+def _normalize_candidate_data(candidate_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(candidate_data, dict):
+        return {}
+
+    normalized = dict(candidate_data)
+    normalized["name"] = _normalize_text(candidate_data.get("name")) or "Candidate"
+    normalized["jobRole"] = _normalize_text(
+        candidate_data.get("jobRole") or candidate_data.get("job_role")
+    ) or "Software Engineer"
+    normalized["experienceLevel"] = _normalize_text(
+        candidate_data.get("experienceLevel") or candidate_data.get("experience_level")
+    ) or "Intermediate"
+
+    years_exp = candidate_data.get("yearsExperience", candidate_data.get("years_experience", 3))
+    try:
+        normalized["yearsExperience"] = int(years_exp)
+    except (TypeError, ValueError):
+        normalized["yearsExperience"] = 3
+
+    completed_days = candidate_data.get("completedDays", candidate_data.get("completed_days", []))
+    if isinstance(completed_days, list):
+        normalized["completedDays"] = [
+            int(day) for day in completed_days if str(day).strip().isdigit()
+        ]
+    else:
+        normalized["completedDays"] = []
+
+    return normalized
+
+
+def _ensure_unique_question(question: str, existing_questions: List[str]) -> str:
+    cleaned = re.sub(r"\s+", " ", _normalize_text(question))
+    if not cleaned:
+        return "Could you walk me through a concrete implementation example for this topic?"
+
+    seen = {
+        re.sub(r"\s+", " ", _normalize_text(existing))
+        for existing in existing_questions or []
+        if _normalize_text(existing)
+    }
+    if cleaned not in seen:
+        return cleaned
+
+    return f"{cleaned} Please share a concrete implementation example."
+
+
+def _build_question_text(
+    is_followup: bool,
+    next_day: int,
+    day_title: str,
+    day_tools: List[str],
+    day_objectives: List[str],
+    last_message: Optional[str],
+    candidate_name: str,
+    job_role: str,
+    experience_level: str,
+    years_exp: int,
+) -> str:
+    tools = day_tools[:2] if day_tools else ["these tools"]
+    objectives = day_objectives[0] if day_objectives else "the module objective"
+
+    if is_followup:
+        answer_excerpt = _normalize_text(last_message)
+        if answer_excerpt:
+            answer_excerpt = answer_excerpt[:120]
+            return (
+                f"Building on your note about {answer_excerpt}, how would you validate or improve that approach "
+                f"for {day_title} using {', '.join(tools)}?"
+            )
+        return (
+            f"Regarding {day_title}, how would you validate or improve your approach using {', '.join(tools)}?"
+        )
+
+    return (
+        f"{candidate_name}, as a {experience_level.lower()} {job_role.lower()}, how would you apply "
+        f"{', '.join(tools)} to address {objectives} for {day_title}?"
+    )
+
+
 def evaluate_answer(state: AgentState) -> Dict[str, Any]:
     """Node: Evaluates the candidate's last answer and updates collected_information."""
     last_msg = state.get("last_message")
@@ -33,12 +118,12 @@ def evaluate_answer(state: AgentState) -> Dict[str, Any]:
     history = state.get("conversation_history") or []
     
     # If starting session (no answer yet), do nothing
-    if not last_msg:
+    if not _normalize_text(last_msg):
         return {"conversation_history": history}
 
     # Append candidate's response to history
     new_history = list(history)
-    new_history.append({"role": "user", "content": last_msg})
+    new_history.append({"role": "user", "content": _normalize_text(last_msg)})
 
     collected_info = dict(state.get("collected_information") or {})
 
@@ -74,16 +159,16 @@ def evaluate_answer(state: AgentState) -> Dict[str, Any]:
 
 def generate_question(state: AgentState) -> Dict[str, Any]:
     """Node: Selects the next curriculum day and generates a personalized question."""
-    candidate = state.get("candidate_data") or {}
+    candidate = _normalize_candidate_data(state.get("candidate_data") or {})
     history = state.get("conversation_history") or []
     questions_asked = list(state.get("questions_asked") or [])
     days_covered = list(state.get("curriculum_days_covered") or [])
     
     # Extract candidate metadata
     name = candidate.get("name") or "Candidate"
-    job_role = candidate.get("jobRole") or candidate.get("job_role") or "Software Engineer"
-    experience_level = candidate.get("experienceLevel") or candidate.get("experience_level") or "Intermediate"
-    years_exp = candidate.get("yearsExperience") or candidate.get("years_experience") or 3
+    job_role = candidate.get("jobRole") or "Software Engineer"
+    experience_level = candidate.get("experienceLevel") or "Intermediate"
+    years_exp = candidate.get("yearsExperience") or 3
     
     # Establish target curriculum days to cover
     completed_days = list(state.get("completed_curriculum_days") or [])
@@ -109,15 +194,14 @@ def generate_question(state: AgentState) -> Dict[str, Any]:
 
     ask_followup = False
     if current_day is not None:
-        # How many times have we asked about this day?
+        # Follow-up questions should only be used when the prior answer exists and there is still room to cover more unique days.
+        last_msg = _normalize_text(state.get("last_message"))
         day_count = days_covered.count(current_day)
-        if day_count == 1:
-            # Check if switching is mandatory to cover 6 unique days
+        if day_count == 1 and last_msg:
             unique_days_so_far = len(set(days_covered))
             remaining_questions = 10 - len(questions_asked)
             unique_days_needed = 6 - unique_days_so_far
             if remaining_questions > unique_days_needed:
-                # Room for a follow-up question
                 ask_followup = True
 
     if ask_followup and current_day is not None:
@@ -147,6 +231,7 @@ def generate_question(state: AgentState) -> Dict[str, Any]:
     topic_label = f"Day {next_day}: {day_title}"
 
     # Generate question text (Dual mode: Real LLM or Mock fallback)
+    last_message = state.get("last_message")
     if settings.OPENAI_API_KEY:
         try:
             llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o-mini", temperature=0.7)
@@ -165,30 +250,48 @@ def generate_question(state: AgentState) -> Dict[str, Any]:
             )
             if is_followup:
                 prompt += (
-                    "This is a follow-up question. Based on the candidate's last answer, ask an intelligent, "
-                    "personalized follow-up to dive deeper into the topic, or clarify a gap."
+                    "This is a follow-up question. Use the candidate's last answer as context and ask an intelligent, "
+                    f"personalized follow-up based on their response: {last_message}."
                 )
             else:
                 prompt += (
                     "This is a new topic. Introduce the topic with a natural transition, and ask a personalized "
                     "technical question targeting one of the day's objectives."
                 )
-            prompt += "\n\nAsk the question directly. Do not include any meta-text, headers, or prefix."
+            prompt += "\n\nAsk the question directly. Do not include any meta-text, headers, or prefix. Avoid repeating the exact same question as earlier turns."
             
             response = llm.invoke([SystemMessage(content="You are a friendly, professional AI technical interviewer."), HumanMessage(content=prompt)])
             question = response.content.strip()
-        except Exception as e:
+        except Exception:
             # Safe fallback if API call fails
-            if is_followup:
-                question = f"That's interesting. Regarding the tools in Day {next_day} ({day_title}), how would you handle scaling or error recovery for that setup?"
-            else:
-                question = f"Let's move on to Day {next_day}: {day_title}. Could you explain your experience using {day_tools[0] if day_tools else 'these tools'} and how you implemented their core objectives?"
+            question = _build_question_text(
+                is_followup=is_followup,
+                next_day=next_day,
+                day_title=day_title,
+                day_tools=day_tools,
+                day_objectives=day_objectives,
+                last_message=last_message,
+                candidate_name=name,
+                job_role=job_role,
+                experience_level=experience_level,
+                years_exp=years_exp,
+            )
     else:
         # Mock question output
-        if is_followup:
-            question = f"Follow-up on Day {next_day} ({day_title}): How do you handle failure modes or ensure scalability using {', '.join(day_tools[:2])}?"
-        else:
-            question = f"Let's look at Day {next_day}: {day_title}. Can you explain how you would apply {', '.join(day_tools[:2])} to fulfill the objectives of this module?"
+        question = _build_question_text(
+            is_followup=is_followup,
+            next_day=next_day,
+            day_title=day_title,
+            day_tools=day_tools,
+            day_objectives=day_objectives,
+            last_message=last_message,
+            candidate_name=name,
+            job_role=job_role,
+            experience_level=experience_level,
+            years_exp=years_exp,
+        )
+
+    question = _ensure_unique_question(question, questions_asked)
 
     # Append to history & tracking
     new_history = list(history)
@@ -296,6 +399,9 @@ def decide_next_step(state: AgentState) -> str:
     questions_count = len(state.get("questions_asked") or [])
     days_covered = set(state.get("curriculum_days_covered") or [])
     
+    if state.get("is_completed"):
+        return "generate_feedback"
+
     # Requirement: Target at least 10 questions AND cover at least 6 unique days
     if questions_count >= 10 and len(days_covered) >= 6:
         return "generate_feedback"

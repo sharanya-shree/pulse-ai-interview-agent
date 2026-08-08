@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, status, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.models.interview import InterviewRequest, InterviewResponse
@@ -6,6 +9,15 @@ from app.services.interview_service import InterviewService
 
 router = APIRouter(prefix="/api", tags=["Interview"])
 interview_service = InterviewService()
+
+
+@router.get("/candidates")
+def get_candidates() -> dict:
+    """Expose the official ABTalks candidate catalog to the frontend."""
+    candidate_file = Path(__file__).resolve().parents[3] / "docs" / "abtalks" / "candidates.json"
+    with candidate_file.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return {"candidates": payload.get("candidates", [])}
 
 
 @router.post(

@@ -1,3 +1,4 @@
+import re
 from sqlalchemy.orm import Session
 from app.models.db import InterviewSessionModel, InterviewStatus
 from app.services.workflow import compiled_graph
@@ -5,6 +6,42 @@ from typing import Dict, Any, Optional
 
 class InterviewService:
     """Service to coordinate DB states and execute LangGraph state turns."""
+
+    @staticmethod
+    def _normalize_session_id(session_id: Optional[str]) -> str:
+        normalized = (session_id or "").strip()
+        if not normalized:
+            raise ValueError("A non-empty session_id is required.")
+        if len(normalized) > 255:
+            raise ValueError("session_id is too long.")
+        return normalized
+
+    @staticmethod
+    def _normalize_candidate_data(candidate_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if candidate_data is None:
+            return None
+        if not isinstance(candidate_data, dict):
+            raise ValueError("candidate data must be a JSON object.")
+
+        normalized = dict(candidate_data)
+        for key in ["id", "name", "experienceLevel", "experience_level", "jobRole", "job_role", "education"]:
+            if key in normalized and normalized[key] is not None:
+                normalized[key] = str(normalized[key]).strip()
+
+        completed_days = normalized.get("completedDays", normalized.get("completed_days", []))
+        if isinstance(completed_days, list):
+            normalized["completedDays"] = [int(day) for day in completed_days if str(day).strip().isdigit()]
+        else:
+            normalized["completedDays"] = []
+
+        return normalized
+
+    @staticmethod
+    def _normalize_message(message: Optional[str]) -> Optional[str]:
+        if message is None:
+            return None
+        normalized = re.sub(r"\s+", " ", message).strip()
+        return normalized or None
     
     def conduct_interview_turn(
         self,
@@ -13,6 +50,9 @@ class InterviewService:
         message: Optional[str],
         db: Session
     ) -> Dict[str, Any]:
+        session_id = self._normalize_session_id(session_id)
+        normalized_message = self._normalize_message(message)
+
         # 1. Fetch existing session model
         model = db.query(InterviewSessionModel).filter(
             InterviewSessionModel.session_id == session_id
@@ -20,6 +60,54 @@ class InterviewService:
 
         # 2. Handle initial session configuration
         if candidate_data is not None:
+            normalized_candidate = self._normalize_candidate_data(candidate_data)
+            if normalized_candidate is None:
+                raise ValueError("candidate data must be provided for a new interview session.")
+            if model and model.status == InterviewStatus.COMPLETED:
+                model.conversation_history = []
+                model.questions_asked = []
+                model.curriculum_days_covered = []
+                model.current_topic = None
+                model.status = InterviewStatus.IN_PROGRESS
+                model.feedback = None
+            if model:
+                # Reset existing session to start fresh
+                model.candidate_data = normalized_candidate
+                model.conversation_history = []
+                model.questions_asked = []
+                model.curriculum_days_covered = []
+                model.current_topic = None
+                model.status = InterviewStatus.IN_PROGRESS
+                model.feedback = None
+            else:
+                # Create a new session row
+                model = InterviewSessionModel(
+                    session_id=session_id,
+                    candidate_data=normalized_candidate,
+                    conversation_history=[],
+                    questions_asked=[],
+                    curriculum_days_covered=[],
+                    current_topic=None,
+                    status=InterviewStatus.IN_PROGRESS,
+                    feedback=None
+                )
+                db.add(model)
+
+            db.commit()
+            db.refresh(model)
+            # Initial setup carries no candidate reply yet
+            normalized_message = None
+
+        if not model:
+            raise ValueError(
+                f"Session '{session_id}' not found. Please initialize session with candidate profile data first."
+            )
+
+        if model.status == InterviewStatus.COMPLETED and normalized_message is not None:
+            raise ValueError("This interview session has already been completed.")
+
+        if normalized_message is None and candidate_data is None:
+            normalized_message = None
             if model:
                 # Reset existing session to start fresh
                 model.candidate_data = candidate_data
@@ -71,7 +159,7 @@ class InterviewService:
             "is_completed": model.status == InterviewStatus.COMPLETED,
             "collected_information": collected_evals,
             "feedback": model.feedback,
-            "last_message": message
+            "last_message": normalized_message
         }
 
         # 4. Invoke compiled LangGraph state machine
