@@ -324,6 +324,7 @@ Before finishing, verify that the project structure is coherent and that the Fas
 Again: THIS TASK IS ONLY THE FOUNDATION FOR PERSON 1.
 Do not build the complete application in one shot.
 ```
+
 ## Person 2
 
 ### Prompt 2 — ABTalks Resource Analysis
@@ -395,8 +396,11 @@ After implementation:
 - show the important code changes
 - do NOT commit
 - do NOT modify unrelated files
--------------------------------------------------------------------------
+```
 
+### Prompt 2 — Workflow Verification and Hardening
+
+```text
 We have reviewed the Person 2 implementation. Do NOT commit anything.
 
 Before making changes, verify the implementation against the actual PS2 requirements and existing API contract.
@@ -451,6 +455,9 @@ After making changes:
 - DO NOT commit
 ```
 
+### Prompt 3 — ABTalks Resource Analysis
+
+```text
 The official ABTalks PS2 resources have now been added to the repository under docs/abtalks/.
 
 Read and inspect all three files:
@@ -463,6 +470,7 @@ Treat these organizer-provided files as the authoritative source for the PS2 imp
 For now, DO NOT modify any files, generate code, or implement features.
 
 Only analyze the resources and report:
+
 1. The structure and important fields of curriculum.json.
 2. The structure and important fields of candidates.json.
 3. Every important API contract and submission requirement in technical-spec.md.
@@ -472,12 +480,15 @@ Only analyze the resources and report:
 Do not fabricate, alter, or replace any data from these official resources.
 
 After the analysis, stop and wait for further instructions.
+```
 
-### Prompt 3 — Foundation Verification
+### Prompt 4 — Foundation Verification
 
+```text
 Now verify the current Person 1 foundation without adding new features.
 
 Please:
+
 1. Inspect the current repository structure and existing implementation.
 2. Set up/use the backend Python environment as needed.
 3. Install the dependencies from backend/requirements.txt if they are not already installed.
@@ -501,9 +512,13 @@ At the end, report:
 - any remaining issues
 
 Then stop and wait for my instructions.
+```
 
-## person 3
-### Prompt 1 — First, make Copilot understand the existing project
+## Person 3
+
+### Prompt 1 — First, Make Copilot Understand the Existing Project
+
+```text
 You are helping me complete the final implementation of the Vicodathon hackathon project.
 
 I am Person 3, the final developer. Person 1 and Person 2 have already implemented the backend, LangGraph interview workflow, PostgreSQL session state, official curriculum/candidate data, and initial project configuration.
@@ -512,16 +527,16 @@ I need you to work ONLY on top of the existing codebase.
 
 First, inspect the entire repository before changing anything, especially:
 
-* backend/
-* frontend/
-* docs/abtalks/curriculum.json
-* docs/abtalks/candidates.json
-* docs/abtalks/technical-spec.md
-* backend/app/
-* backend/tests/
-* .env.example
-* README files
-* package/dependency files
+- backend/
+- frontend/
+- docs/abtalks/curriculum.json
+- docs/abtalks/candidates.json
+- docs/abtalks/technical-spec.md
+- backend/app/
+- backend/tests/
+- .env.example
+- README files
+- package/dependency files
 
 Do NOT rewrite working code just for style.
 Do NOT replace the official curriculum, candidates, or technical specification.
@@ -539,8 +554,11 @@ Give me a concise report containing:
 6. Which files should NOT be changed.
 
 Do not modify files yet. Only inspect and report.
+```
 
-### Prompt 2 — Complete the frontend
+### Prompt 2 — Complete the Frontend
+
+```text
 Now implement the missing frontend functionality for the Vicodathon project.
 
 Goal: create a complete, polished interview experience using the existing backend API.
@@ -564,36 +582,39 @@ The frontend should support this complete flow:
 
 Requirements:
 
-* Use the existing backend instead of duplicating interview logic in the frontend.
-* Use the existing /api/interview API contract.
-* Keep the UI responsive.
-* Make loading states clear.
-* Add error states for backend failures.
-* Prevent accidental duplicate submissions while a request is pending.
-* Preserve the interview session_id on the client.
-* Clearly show interview progress.
-* Make the interface suitable for a hackathon demo.
-* Do not hardcode candidate data if it can be loaded from the official candidate JSON.
-* Do not expose OPENAI_API_KEY or any secret in frontend code.
-* Do not modify the official organizer files.
-* Do not rewrite the backend unless an actual API mismatch prevents the frontend from working.
+- Use the existing backend instead of duplicating interview logic in the frontend.
+- Use the existing /api/interview API contract.
+- Keep the UI responsive.
+- Make loading states clear.
+- Add error states for backend failures.
+- Prevent accidental duplicate submissions while a request is pending.
+- Preserve the interview session_id on the client.
+- Clearly show interview progress.
+- Make the interface suitable for a hackathon demo.
+- Do not hardcode candidate data if it can be loaded from the official candidate JSON.
+- Do not expose OPENAI_API_KEY or any secret in frontend code.
+- Do not modify the official organizer files.
+- Do not rewrite the backend unless an actual API mismatch prevents the frontend from working.
 
 After implementation, inspect all changed files and summarize exactly what you changed.
+```
 
-### Prompt 3 — Make the interview workflow robust
+### Prompt 3 — Make the Interview Workflow Robust
+
+```text
 Now audit and harden the existing interview workflow without replacing its architecture.
 
 The project requirements are:
 
-* The interview should contain at least 10 questions.
-* Questions should cover at least 6 unique curriculum days.
-* Questions must be grounded in the official curriculum.
-* Follow-up questions should meaningfully depend on the candidate's previous answer.
-* Questions should not be exact duplicates.
-* The interview should maintain state across messages.
-* The session should be resumable using its session_id.
-* Once the interview is complete, it must not continue asking questions.
-* Completion should produce structured feedback when the backend design supports it.
+- The interview should contain at least 10 questions.
+- Questions should cover at least 6 unique curriculum days.
+- Questions must be grounded in the official curriculum.
+- Follow-up questions should meaningfully depend on the candidate's previous answer.
+- Questions should not be exact duplicates.
+- The interview should maintain state across messages.
+- The session should be resumable using its session_id.
+- Once the interview is complete, it must not continue asking questions.
+- Completion should produce structured feedback when the backend design supports it.
 
 Inspect the existing LangGraph workflow and state model.
 
@@ -601,17 +622,17 @@ Fix only genuine issues you find.
 
 Pay special attention to:
 
-* question counting
-* curriculum-day tracking
-* duplicate questions
-* follow-up generation
-* session state persistence
-* completed-session handling
-* malformed candidate data
-* missing fields
-* LLM failures
-* empty candidate answers
-* invalid session IDs
+- question counting
+- curriculum-day tracking
+- duplicate questions
+- follow-up generation
+- session state persistence
+- completed-session handling
+- malformed candidate data
+- missing fields
+- LLM failures
+- empty candidate answers
+- invalid session IDs
 
 Do not change the official curriculum or candidate data.
 
@@ -621,24 +642,27 @@ Do not remove PostgreSQL/session functionality.
 
 After changes, explain:
 
-* what was wrong
-* what you fixed
-* which files changed
-* how the fixes satisfy the requirements
+- what was wrong
+- what you fixed
+- which files changed
+- how the fixes satisfy the requirements
+```
 
 ### Prompt 4 — Final Implementation Pass
+
+```text
 We are now in the FINAL IMPLEMENTATION PASS for the Vicodathon hackathon.
 
 Do NOT spend time doing another broad audit or explaining what you could do. Make the remaining major changes directly and efficiently.
 
 The backend workflow hardening is already complete and verified:
 
-* pytest: 9 passed, 3 warnings, 0 failures
-* session validation is implemented
-* duplicate-question protection is implemented
-* follow-up handling is implemented
-* malformed-state handling is implemented
-* completed-session protection is implemented
+- pytest: 9 passed, 3 warnings, 0 failures
+- session validation is implemented
+- duplicate-question protection is implemented
+- follow-up handling is implemented
+- malformed-state handling is implemented
+- completed-session protection is implemented
 
 DO NOT rewrite that backend architecture unless you encounter an actual blocker.
 
@@ -647,7 +671,7 @@ Your job now is to finish the project end-to-end for a hackathon demo.
 ==================================================
 
 1. COMPLETE THE FRONTEND
-   ==================================================
+==================================================
 
 Inspect the existing frontend and implement/fix the complete user journey:
 
@@ -671,24 +695,24 @@ Do not invent endpoints.
 
 The frontend must:
 
-* load the official candidate catalog
-* display candidate name, role, experience/education when available
-* allow selecting a candidate
-* create/start an interview session
-* store the returned session_id
-* send subsequent answers using that session_id
-* display interviewer questions and candidate answers as a chat
-* show question progress
-* disable the submit button while waiting for the backend
-* prevent accidental double submissions
-* show useful errors if the backend is unavailable
-* handle an already-completed session
-* display final structured feedback when returned by the backend
-* provide a "Start New Interview" action
+- load the official candidate catalog
+- display candidate name, role, experience/education when available
+- allow selecting a candidate
+- create/start an interview session
+- store the returned session_id
+- send subsequent answers using that session_id
+- display interviewer questions and candidate answers as a chat
+- show question progress
+- disable the submit button while waiting for the backend
+- prevent accidental double submissions
+- show useful errors if the backend is unavailable
+- handle an already-completed session
+- display final structured feedback when returned by the backend
+- provide a "Start New Interview" action
 
 ==================================================
 2. MAKE THE UI HACKATHON-READY
-==============================
+==================================================
 
 Do not over-engineer the design.
 
@@ -696,17 +720,17 @@ Create a clean professional AI interview interface.
 
 Use:
 
-* clear visual hierarchy
-* responsive layout
-* polished cards
-* clear primary CTA
-* interview progress indicator
-* chat bubbles
-* loading state
-* error state
-* completion state
-* candidate information panel
-* accessible buttons and form controls
+- clear visual hierarchy
+- responsive layout
+- polished cards
+- clear primary CTA
+- interview progress indicator
+- chat bubbles
+- loading state
+- error state
+- completion state
+- candidate information panel
+- accessible buttons and form controls
 
 The application should look like a real interview product rather than a raw developer demo.
 
@@ -716,7 +740,7 @@ Prefer the existing frontend stack and components.
 
 ==================================================
 3. CONNECT FRONTEND AND BACKEND
-===============================
+==================================================
 
 Verify the exact backend request/response schemas.
 
@@ -724,14 +748,13 @@ Do not assume field names.
 
 If the backend returns fields such as:
 
-* session_id
-* question
-* done
-* feedback
-* candidate
-  or equivalent existing names,
+- session_id
+- question
+- done
+- feedback
+- candidate
 
-use the actual names from the backend.
+or equivalent existing names, use the actual names from the backend.
 
 Create a small frontend API utility if appropriate so API communication is not duplicated across components.
 
@@ -747,18 +770,18 @@ Do NOT expose OPENAI_API_KEY or database credentials to the frontend.
 
 ==================================================
 4. VERIFY THE INTERVIEW REQUIREMENTS
-====================================
+==================================================
 
 The final application must preserve these requirements:
 
-* minimum 10 questions
-* minimum 6 unique curriculum days
-* questions grounded in official curriculum
-* follow-ups based on candidate answers
-* avoid exact duplicate questions
-* persistent session state
-* completed sessions cannot continue
-* structured feedback at completion
+- minimum 10 questions
+- minimum 6 unique curriculum days
+- questions grounded in official curriculum
+- follow-ups based on candidate answers
+- avoid exact duplicate questions
+- persistent session state
+- completed sessions cannot continue
+- structured feedback at completion
 
 Do not implement interview logic independently in React/Next.js.
 
@@ -766,7 +789,7 @@ The backend remains the source of truth for interview progression.
 
 ==================================================
 5. OFFICIAL DATA MUST REMAIN UNCHANGED
-======================================
+==================================================
 
 DO NOT MODIFY:
 
@@ -782,23 +805,23 @@ Do not create a fake candidate dataset.
 
 ==================================================
 6. ENVIRONMENT / CONFIGURATION
-==============================
+==================================================
 
 Verify:
 
-* .env is gitignored
-* .env.example contains placeholders only
-* OPENAI_API_KEY is backend-only
-* database credentials are backend-only
-* frontend uses NEXT_PUBLIC_API_URL only
-* no secrets appear in source code
-* no real credentials are added
+- .env is gitignored
+- .env.example contains placeholders only
+- OPENAI_API_KEY is backend-only
+- database credentials are backend-only
+- frontend uses NEXT_PUBLIC_API_URL only
+- no secrets appear in source code
+- no real credentials are added
 
 Do not create a real .env file.
 
 ==================================================
 7. TESTS
-========
+==================================================
 
 Do not spend excessive time writing dozens of tests.
 
@@ -806,12 +829,12 @@ Add only the highest-value missing tests.
 
 Backend:
 
-* existing 9 tests must continue passing
-* add tests only if needed for a genuinely uncovered critical behavior
+- existing 9 tests must continue passing
+- add tests only if needed for a genuinely uncovered critical behavior
 
 Frontend:
 
-* ensure TypeScript/build/lint checks pass if configured
+- ensure TypeScript/build/lint checks pass if configured
 
 Run the available checks.
 
@@ -831,40 +854,40 @@ Do not invent commands that the project does not support.
 
 ==================================================
 8. README
-=========
+==================================================
 
 Update the README only where necessary so a hackathon judge can run the project.
 
 Include:
 
-* project purpose
-* architecture overview
-* backend setup
-* frontend setup
-* environment variables
-* PostgreSQL requirement if required
-* how to run backend
-* how to run frontend
-* how to run tests
-* basic interview flow
+- project purpose
+- architecture overview
+- backend setup
+- frontend setup
+- environment variables
+- PostgreSQL requirement if required
+- how to run backend
+- how to run frontend
+- how to run tests
+- basic interview flow
 
 Do not claim functionality that doesn't actually exist.
 
 ==================================================
 9. FINAL CLEANUP
-================
+==================================================
 
 Before finishing:
 
-* fix TypeScript errors
-* fix Python syntax/import errors
-* fix broken frontend API calls
-* remove unused imports caused by your changes
-* remove obvious dead code from your changes
-* ensure loading/error states work
-* ensure mobile layout is usable
-* ensure no secret is exposed
-* ensure official organizer files are untouched
+- fix TypeScript errors
+- fix Python syntax/import errors
+- fix broken frontend API calls
+- remove unused imports caused by your changes
+- remove obvious dead code from your changes
+- ensure loading/error states work
+- ensure mobile layout is usable
+- ensure no secret is exposed
+- ensure official organizer files are untouched
 
 Do NOT perform large stylistic refactors.
 
@@ -874,7 +897,7 @@ Do NOT introduce unnecessary dependencies.
 
 ==================================================
 10. IMPORTANT: WORK EFFICIENTLY
-===============================
+==================================================
 
 This is the final implementation pass.
 
@@ -898,8 +921,11 @@ Your final response must be concise and contain ONLY:
 4. Any remaining blocker
 
 Do not give me a long tutorial.
+```
 
 ### Prompt 5 — Frontend Visual Polish
+
+```text
 Fix ONLY the frontend visual layout/alignment of the Pulse AI Interview Agent.
 
 The application is working correctly now. DO NOT change:
@@ -921,6 +947,7 @@ Make the frontend look like a polished professional hackathon demo.
 Requirements:
 
 1. PAGE CONTAINER
+
 - Use a responsive centered container.
 - On desktop, use approximately 1100px–1250px max-width.
 - Give the main content enough width to use the screen effectively.
@@ -928,12 +955,14 @@ Requirements:
 - Do not make the content stretch edge-to-edge.
 
 2. HERO
+
 - Make the "Pulse AI Interview Agent" hero span the main content width.
 - Keep the title and subtitle aligned consistently.
 - Keep the "Backend ready" status badge aligned to the right on desktop.
 - On mobile, stack the badge below the title.
 
 3. CANDIDATE SECTION
+
 - Make the candidate selection section use the full available content width.
 - Candidate cards should form a responsive grid rather than being confined to a narrow left column.
 - Desktop: 3 candidate cards per row.
@@ -943,6 +972,7 @@ Requirements:
 - Use CSS grid rather than manually positioning cards.
 
 4. CANDIDATE CARDS
+
 - Make the cards visually balanced.
 - Center candidate name, role, experience, and completed-days information.
 - Give cards consistent padding.
@@ -952,6 +982,7 @@ Requirements:
 - Do not make cards excessively tall.
 
 5. OVERALL SPACING
+
 - Add consistent vertical spacing between:
   hero
   candidate section
@@ -960,6 +991,7 @@ Requirements:
 - Keep the page visually balanced.
 
 6. RESPONSIVENESS
+
 Use CSS media queries so the layout works at:
 - desktop
 - laptop
@@ -967,13 +999,17 @@ Use CSS media queries so the layout works at:
 - mobile
 
 7. IMPORTANT
+
 Inspect the existing index.html, app.js, and styles.css before editing.
+
 Prefer modifying styles.css and only make minimal HTML changes if necessary.
+
 Do NOT introduce a CSS framework or new dependency.
 Do NOT rewrite working JavaScript.
 Do NOT change API behavior.
 
 After making the changes:
+
 - run the frontend/static server if necessary
 - verify the page visually
 - make sure all candidate cards appear in a proper responsive grid
@@ -981,3 +1017,4 @@ After making the changes:
 - make sure the existing candidate selection functionality still works
 
 Do the implementation directly. Do not just tell me what CSS I should write.
+```
