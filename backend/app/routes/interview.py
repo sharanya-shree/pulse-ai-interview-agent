@@ -1,7 +1,11 @@
-from fastapi import APIRouter, status, HTTPException
-from app.models.interview import InterviewRequest, InterviewResponse, InterviewFeedback
+from fastapi import APIRouter, status, HTTPException, Depends
+from sqlalchemy.orm import Session
+from app.models.interview import InterviewRequest, InterviewResponse
+from app.core.database import get_db
+from app.services.interview_service import InterviewService
 
 router = APIRouter(prefix="/api", tags=["Interview"])
+interview_service = InterviewService()
 
 
 @router.post(
@@ -11,37 +15,35 @@ router = APIRouter(prefix="/api", tags=["Interview"])
     summary="Conduct Interview Turn",
     description="Primary HTTP endpoint for initial session start and subsequent interview message turns."
 )
-async def conduct_interview(payload: InterviewRequest) -> InterviewResponse:
+async def conduct_interview(
+    payload: InterviewRequest,
+    db: Session = Depends(get_db)
+) -> InterviewResponse:
     """
     HTTP endpoint defined by Technical Specification:
     Accepts sessionId along with candidate info (initial turn) or message (subsequent turn).
+    Routes state through LangGraph workflow and saves state in database.
     Returns reply, done flag, and feedback if done.
     """
-    if payload.candidate is not None:
-        # Initial interview session initiation turn
-        candidate_name = payload.candidate.get("name", "Candidate")
-        reply_msg = (
-            f"Hello {candidate_name}! Welcome to your technical interview session ({payload.session_id}). "
-            "I'm ready to begin our multi-turn conversation based on your learning journey."
+    try:
+        result = interview_service.conduct_interview_turn(
+            session_id=payload.session_id,
+            candidate_data=payload.candidate,
+            message=payload.message,
+            db=db
         )
         return InterviewResponse(
-            reply=reply_msg,
-            done=False,
-            feedback=None
+            reply=result["reply"],
+            done=result["done"],
+            feedback=result["feedback"]
         )
-    elif payload.message is not None:
-        # Subsequent candidate message turn
-        reply_msg = (
-            f"Received response for session {payload.session_id}: '{payload.message}'. "
-            "Foundation endpoint is reachable. Ready for Person 2 AI Agent state workflow execution."
-        )
-        return InterviewResponse(
-            reply=reply_msg,
-            done=False,
-            feedback=None
-        )
-    else:
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Payload must include candidate data for session init or a candidate message answer."
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred executing interview turn: {str(e)}"
         )

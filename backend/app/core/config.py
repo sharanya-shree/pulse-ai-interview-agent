@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # LLM Settings (for future integration)
     OPENAI_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4o-mini"
 
     model_config = SettingsConfigDict(
         env_file=".env",
