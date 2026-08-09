@@ -1,21 +1,22 @@
 const APP_API_BASE_URL = (() => {
   const configured =
-    window.__APP_CONFIG__?.apiBaseUrl ||
-    window.NEXT_PUBLIC_API_URL ||
-    'http://localhost:8000';
+    window.APP_CONFIG?.apiBaseUrl || window.NEXT_PUBLIC_API_URL;
 
-  return String(configured || 'http://localhost:8000').replace(/\/$/, '');
+  return String(
+    configured || "https://pulse-ai-interview-backend.onrender.com",
+  ).replace(/\/$/, "");
 })();
 
 function getErrorMessage(payload) {
-  if (typeof payload === 'string') {
+  if (typeof payload === "string") {
     return payload;
   }
 
   if (payload?.detail) {
     if (Array.isArray(payload.detail)) {
-      return payload.detail.map((item) => item?.msg || item).join(' ');
+      return payload.detail.map((item) => item?.msg || item).join(" ");
     }
+
     return payload.detail;
   }
 
@@ -23,19 +24,23 @@ function getErrorMessage(payload) {
     return payload.message;
   }
 
-  return 'The request failed.';
+  return "The request failed.";
 }
 
 async function requestJson(path, options = {}) {
   const response = await fetch(`${APP_API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
     ...options,
   });
 
   let payload = null;
-  const contentType = response.headers.get('content-type') || '';
 
-  if (contentType.includes('application/json')) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
     payload = await response.json();
   } else {
     payload = await response.text();
