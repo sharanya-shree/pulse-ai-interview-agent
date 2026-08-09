@@ -327,7 +327,7 @@ Do not build the complete application in one shot.
 
 ## Person 2
 
-### Prompt 2 — ABTalks Resource Analysis
+### Prompt 1 — ABTalks Resource Analysis
 
 ```text
 We are now implementing the Person 2 backend AI interview workflow.
@@ -1018,26 +1018,35 @@ After making the changes:
 
 Do the implementation directly. Do not just tell me what CSS I should write.
 ```
-## Person 3
-## Gemini LLM Integration
+## Person 1
+
+## Prompt 2 — Gemini LLM Integration
 
 ### Prompt
-Integrate a real LLM into the Pulse AI Interview Agent using Google Gemini through LangChain. Use the API key from environment variables and make the LLM generate contextual technical interview questions and follow-up questions based on the candidate's previous answer.
+
+```text
+Integrate a real LLM into the Pulse AI Interview Agent using Google Gemini through LangChain. Store the Gemini API key securely in environment variables and use it from the backend without exposing it to the frontend. Make the LLM generate contextual technical interview questions and follow-up questions based on the candidate's previous answer.
+```
 
 ### Changes
+
 - Added Gemini API configuration.
-- Added `GOOGLE_API_KEY` environment variable.
+- Added `GOOGLE_API_KEY` environment variable for secure API key management.
 - Added configurable `LLM_MODEL`.
 - Integrated `ChatGoogleGenerativeAI`.
 - Replaced rule-based/fallback interview generation with Gemini LLM generation.
 - Updated the model from `gemini-2.5-flash-lite` to `gemini-2.5-flash` because the former was unavailable for new users.
 
-## Frontend Cleanup
+## Prompt 3 — Frontend Branding Cleanup
 
 ### Prompt
+
+```text
 Remove the development/demo branding from the interview interface and present the application as the actual Pulse AI Interview Agent.
+```
 
 ### Changes
+
 - Removed "VICODATHON DEMO".
 - Removed "Backend ready" status.
 - Kept the main Pulse AI Interview Agent branding.
