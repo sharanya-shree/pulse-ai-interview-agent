@@ -1,13 +1,19 @@
 import json
 import re
 from typing import TypedDict, List, Dict, Any, Optional
+
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+
 from app.core.config import settings
 from app.services.curriculum import CurriculumService
 
-# Define LangGraph AgentState
+
+# ============================================================
+# LANGGRAPH STATE
+# ============================================================
+
 class AgentState(TypedDict):
     session_id: str
     candidate_data: Dict[str, Any]
@@ -23,37 +29,85 @@ class AgentState(TypedDict):
     feedback: Optional[Dict[str, Any]]
     last_message: Optional[str]
 
-# Initialize CurriculumService helper
+
+# ============================================================
+# CURRICULUM SERVICE
+# ============================================================
+
 curriculum_service = CurriculumService()
 
 
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
 def _normalize_text(value: Optional[str]) -> str:
+    """
+    Convert None to an empty string and remove unnecessary
+    whitespace.
+    """
     return (value or "").strip()
 
 
-def _normalize_candidate_data(candidate_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _normalize_candidate_data(
+    candidate_data: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Normalize candidate information so the rest of the workflow
+    can safely use consistent field names and default values.
+    """
+
     if not isinstance(candidate_data, dict):
         return {}
 
     normalized = dict(candidate_data)
-    normalized["name"] = _normalize_text(candidate_data.get("name")) or "Candidate"
-    normalized["jobRole"] = _normalize_text(
-        candidate_data.get("jobRole") or candidate_data.get("job_role")
-    ) or "Software Engineer"
-    normalized["experienceLevel"] = _normalize_text(
-        candidate_data.get("experienceLevel") or candidate_data.get("experience_level")
-    ) or "Intermediate"
 
-    years_exp = candidate_data.get("yearsExperience", candidate_data.get("years_experience", 3))
+    # Candidate name
+    normalized["name"] = (
+        _normalize_text(candidate_data.get("name"))
+        or "Candidate"
+    )
+
+    # Job role
+    normalized["jobRole"] = (
+        _normalize_text(
+            candidate_data.get("jobRole")
+            or candidate_data.get("job_role")
+        )
+        or "Software Engineer"
+    )
+
+    # Experience level
+    normalized["experienceLevel"] = (
+        _normalize_text(
+            candidate_data.get("experienceLevel")
+            or candidate_data.get("experience_level")
+        )
+        or "Intermediate"
+    )
+
+    # Years of experience
+    years_exp = candidate_data.get(
+        "yearsExperience",
+        candidate_data.get("years_experience", 3),
+    )
+
     try:
         normalized["yearsExperience"] = int(years_exp)
     except (TypeError, ValueError):
         normalized["yearsExperience"] = 3
 
-    completed_days = candidate_data.get("completedDays", candidate_data.get("completed_days", []))
+    # Completed curriculum days
+    completed_days = candidate_data.get(
+        "completedDays",
+        candidate_data.get("completed_days", []),
+    )
+
     if isinstance(completed_days, list):
         normalized["completedDays"] = [
-            int(day) for day in completed_days if str(day).strip().isdigit()
+            int(day)
+            for day in completed_days
+            if str(day).strip().isdigit()
         ]
     else:
         normalized["completedDays"] = []
@@ -61,20 +115,88 @@ def _normalize_candidate_data(candidate_data: Optional[Dict[str, Any]]) -> Dict[
     return normalized
 
 
-def _ensure_unique_question(question: str, existing_questions: List[str]) -> str:
-    cleaned = re.sub(r"\s+", " ", _normalize_text(question))
+def _clean_question(question: str) -> str:
+    """
+    Clean Gemini's response so that only the interview question
+    is displayed.
+    """
+
+    cleaned = _normalize_text(question)
+
+    # Remove markdown formatting
+    cleaned = re.sub(r"^\s*#+\s*", "", cleaned)
+    cleaned = re.sub(r"^\s*[-*]\s*", "", cleaned)
+
+    # Remove common prefixes
+    prefixes = [
+        "Question:",
+        "Interview Question:",
+        "Technical Question:",
+        "Here is the question:",
+        "Here’s the question:",
+    ]
+
+    for prefix in prefixes:
+        if cleaned.lower().startswith(prefix.lower()):
+            cleaned = cleaned[len(prefix):].strip()
+
+    # Collapse whitespace
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    return cleaned
+
+
+def _ensure_unique_question(
+    question: str,
+    existing_questions: List[str],
+) -> str:
+    """
+    Make sure the generated question does not exactly duplicate
+    an earlier question.
+    """
+
+    cleaned = _clean_question(question)
+
     if not cleaned:
-        return "Could you walk me through a concrete implementation example for this topic?"
+        return (
+            "Can you explain how you would apply this concept "
+            "in a real-world technical project?"
+        )
 
     seen = {
-        re.sub(r"\s+", " ", _normalize_text(existing))
+        re.sub(
+            r"\s+",
+            " ",
+            _normalize_text(existing),
+        ).lower()
         for existing in existing_questions or []
         if _normalize_text(existing)
     }
-    if cleaned not in seen:
+
+    if cleaned.lower() not in seen:
         return cleaned
 
-    return f"{cleaned} Please share a concrete implementation example."
+    return (
+        f"{cleaned} "
+        "Can you also describe a practical implementation example?"
+    )
+
+
+def _format_tools(tools: List[str]) -> str:
+    """
+    Format a list of tools naturally for an LLM prompt.
+    """
+
+    if not tools:
+        return "the relevant technologies"
+
+    if len(tools) == 1:
+        return tools[0]
+
+    if len(tools) == 2:
+        return f"{tools[0]} and {tools[1]}"
+
+    return ", ".join(tools[:-1]) + f", and {tools[-1]}"
 
 
 def _build_question_text(
@@ -89,181 +211,514 @@ def _build_question_text(
     experience_level: str,
     years_exp: int,
 ) -> str:
-    tools = day_tools[:2] if day_tools else ["these tools"]
-    objectives = day_objectives[0] if day_objectives else "the module objective"
+    """
+    Safe fallback question generator.
+
+    This is only used when Gemini cannot generate a question.
+    """
+
+    tools = day_tools[:2] if day_tools else [
+        "the relevant technologies"
+    ]
+
+    tools_text = _format_tools(tools)
+
+    objective = (
+        day_objectives[0]
+        if day_objectives
+        else "the core concepts of this topic"
+    )
+
+    objective = objective.strip()
+
+    # Remove instructional prefixes from curriculum objectives
+    prefixes_to_remove = [
+        "understand how ",
+        "understand ",
+        "learn how ",
+        "learn ",
+        "explain how ",
+        "explain ",
+        "know how ",
+        "know ",
+    ]
+
+    clean_objective = objective
+
+    for prefix in prefixes_to_remove:
+        if clean_objective.lower().startswith(prefix):
+            clean_objective = clean_objective[len(prefix):]
+            break
 
     if is_followup:
-        answer_excerpt = _normalize_text(last_message)
-        if answer_excerpt:
-            answer_excerpt = answer_excerpt[:120]
+        answer = _normalize_text(last_message)
+
+        if answer:
+            answer = answer[:160]
+
             return (
-                f"Building on your note about {answer_excerpt}, how would you validate or improve that approach "
-                f"for {day_title} using {', '.join(tools)}?"
+                f"You mentioned that {answer}. "
+                f"What would you change or improve in that approach "
+                f"when working with {tools_text}?"
             )
+
         return (
-            f"Regarding {day_title}, how would you validate or improve your approach using {', '.join(tools)}?"
+            f"How would you validate your approach to "
+            f"{clean_objective.lower()} using {tools_text}?"
         )
 
     return (
-        f"{candidate_name}, as a {experience_level.lower()} {job_role.lower()}, how would you apply "
-        f"{', '.join(tools)} to address {objectives} for {day_title}?"
+        f"As a {experience_level} {job_role} with "
+        f"{years_exp} years of experience, how would you approach "
+        f"{clean_objective.lower()} using {tools_text} "
+        f"in a real-world project?"
     )
 
 
+def _create_gemini() -> ChatGoogleGenerativeAI:
+    """
+    Create the Gemini model using the API key and model configured
+    in app.core.config.
+    """
+
+    return ChatGoogleGenerativeAI(
+        model=settings.LLM_MODEL,
+        google_api_key=settings.GOOGLE_API_KEY,
+        temperature=0.7,
+    )
+
+
+# ============================================================
+# EVALUATE CANDIDATE ANSWER
+# ============================================================
+
 def evaluate_answer(state: AgentState) -> Dict[str, Any]:
-    """Node: Evaluates the candidate's last answer and updates collected_information."""
+    """
+    Evaluate the candidate's latest answer using Gemini.
+    """
+
     last_msg = state.get("last_message")
     current_q = state.get("current_question")
     current_t = state.get("current_topic")
     history = state.get("conversation_history") or []
-    
-    # If starting session (no answer yet), do nothing
+
+    # No answer means the interview is just starting.
     if not _normalize_text(last_msg):
-        return {"conversation_history": history}
+        return {
+            "conversation_history": history
+        }
 
-    # Append candidate's response to history
+    # Copy conversation history
     new_history = list(history)
-    new_history.append({"role": "user", "content": _normalize_text(last_msg)})
 
-    collected_info = dict(state.get("collected_information") or {})
+    # Store candidate answer
+    new_history.append(
+        {
+            "role": "user",
+            "content": _normalize_text(last_msg),
+        }
+    )
 
-    # Evaluate the answer (Dual mode: Real LLM or Mock fallback)
-    if settings.OPENAI_API_KEY:
+    collected_info = dict(
+        state.get("collected_information") or {}
+    )
+
+    # --------------------------------------------------------
+    # Gemini evaluation
+    # --------------------------------------------------------
+
+    if settings.GOOGLE_API_KEY:
+
         try:
-            llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o-mini", temperature=0.2)
-            prompt = (
-                f"You are a technical interviewer. Evaluate the candidate's answer for the following topic/question.\n\n"
-                f"Topic: {current_t}\n"
-                f"Question: {current_q}\n"
-                f"Candidate Answer: {last_msg}\n\n"
-                f"Provide a concise summary assessing the candidate's understanding (1-2 sentences). Mention any strengths or clear gaps."
-            )
-            response = llm.invoke([SystemMessage(content="You are a precise technical evaluator."), HumanMessage(content=prompt)])
-            assessment = response.content.strip()
-        except Exception as e:
-            assessment = f"Evaluation (API fallback): Candidate responded on {current_t}. Answer was logged successfully."
-    else:
-        assessment = f"Mock evaluation for '{current_t}': Answer '{last_msg}' shows satisfactory understanding of target tools."
+            llm = _create_gemini()
 
-    # Store evaluation under current topic
+            prompt = (
+                "You are evaluating a candidate in a technical "
+                "interview.\n\n"
+
+                f"Interview Topic: {current_t}\n"
+                f"Interview Question: {current_q}\n\n"
+
+                f"Candidate Answer:\n{last_msg}\n\n"
+
+                "Evaluate the answer based on technical correctness, "
+                "clarity, depth, and practical understanding.\n\n"
+
+                "Give a concise evaluation in 2-4 sentences.\n"
+                "Mention what the candidate did well and identify "
+                "any important technical gap or misconception.\n"
+
+                "Do not give a numerical score.\n"
+                "Do not address the candidate directly.\n"
+            )
+
+            response = llm.invoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are a precise and fair technical "
+                            "interviewer. Evaluate answers objectively."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ]
+            )
+
+            assessment = _normalize_text(
+                str(response.content)
+            )
+
+        except Exception as e:
+            assessment = (
+                "Gemini evaluation was temporarily unavailable. "
+                "The candidate's answer was recorded successfully."
+            )
+
+    else:
+        assessment = (
+            "LLM evaluation is unavailable because the Gemini "
+            "API key is not configured. The answer was recorded."
+        )
+
+    # Store evaluation
     collected_info[current_t or "General"] = {
         "question": current_q,
         "answer": last_msg,
-        "assessment": assessment
+        "assessment": assessment,
     }
 
     return {
         "conversation_history": new_history,
-        "collected_information": collected_info
+        "collected_information": collected_info,
     }
 
+
+# ============================================================
+# GENERATE NEXT INTERVIEW QUESTION
+# ============================================================
+
 def generate_question(state: AgentState) -> Dict[str, Any]:
-    """Node: Selects the next curriculum day and generates a personalized question."""
-    candidate = _normalize_candidate_data(state.get("candidate_data") or {})
+    """
+    Select the next curriculum day and generate an intelligent
+    interview question using Gemini.
+    """
+
+    candidate = _normalize_candidate_data(
+        state.get("candidate_data") or {}
+    )
+
     history = state.get("conversation_history") or []
-    questions_asked = list(state.get("questions_asked") or [])
-    days_covered = list(state.get("curriculum_days_covered") or [])
-    
-    # Extract candidate metadata
+
+    questions_asked = list(
+        state.get("questions_asked") or []
+    )
+
+    days_covered = list(
+        state.get("curriculum_days_covered") or []
+    )
+
+    # --------------------------------------------------------
+    # Candidate information
+    # --------------------------------------------------------
+
     name = candidate.get("name") or "Candidate"
-    job_role = candidate.get("jobRole") or "Software Engineer"
-    experience_level = candidate.get("experienceLevel") or "Intermediate"
-    years_exp = candidate.get("yearsExperience") or 3
-    
-    # Establish target curriculum days to cover
-    completed_days = list(state.get("completed_curriculum_days") or [])
+
+    job_role = (
+        candidate.get("jobRole")
+        or "Software Engineer"
+    )
+
+    experience_level = (
+        candidate.get("experienceLevel")
+        or "Intermediate"
+    )
+
+    years_exp = (
+        candidate.get("yearsExperience")
+        or 3
+    )
+
+    # --------------------------------------------------------
+    # Determine curriculum days
+    # --------------------------------------------------------
+
+    completed_days = list(
+        state.get("completed_curriculum_days") or []
+    )
+
     target_days = list(completed_days)
-    
-    # If candidate completed less than 6 days, pad list with default curriculum days
+
+    # Make sure we have at least 6 curriculum days
     if len(target_days) < 6:
-        all_days = [d["day"] for d in curriculum_service.data.get("days", [])]
-        for d in all_days:
-            if d not in target_days:
-                target_days.append(d)
+
+        all_days = [
+            d["day"]
+            for d in curriculum_service.data.get(
+                "days",
+                [],
+            )
+        ]
+
+        for day_number in all_days:
+
+            if day_number not in target_days:
+                target_days.append(day_number)
+
             if len(target_days) >= 6:
                 break
 
-    # Determine whether we ask a follow-up on the current day or switch to a new day
+    # --------------------------------------------------------
+    # Determine current day
+    # --------------------------------------------------------
+
     current_day = None
+
     current_topic = state.get("current_topic")
+
     if current_topic and current_topic.startswith("Day "):
+
         try:
-            current_day = int(current_topic.split(" ")[1].rstrip(":"))
-        except ValueError:
-            pass
+            current_day = int(
+                current_topic.split(" ")[1].rstrip(":")
+            )
+
+        except (ValueError, IndexError):
+            current_day = None
+
+    # --------------------------------------------------------
+    # Decide follow-up vs new topic
+    # --------------------------------------------------------
 
     ask_followup = False
+
     if current_day is not None:
-        # Follow-up questions should only be used when the prior answer exists and there is still room to cover more unique days.
-        last_msg = _normalize_text(state.get("last_message"))
+
+        last_msg = _normalize_text(
+            state.get("last_message")
+        )
+
         day_count = days_covered.count(current_day)
+
         if day_count == 1 and last_msg:
-            unique_days_so_far = len(set(days_covered))
-            remaining_questions = 10 - len(questions_asked)
-            unique_days_needed = 6 - unique_days_so_far
+
+            unique_days_so_far = len(
+                set(days_covered)
+            )
+
+            remaining_questions = (
+                10 - len(questions_asked)
+            )
+
+            unique_days_needed = (
+                6 - unique_days_so_far
+            )
+
             if remaining_questions > unique_days_needed:
                 ask_followup = True
 
+    # --------------------------------------------------------
+    # Select next day
+    # --------------------------------------------------------
+
     if ask_followup and current_day is not None:
+
         next_day = current_day
         is_followup = True
+
     else:
-        # Switch to a day that hasn't been covered yet
+
         next_day = None
-        for day_num in target_days:
-            if day_num not in days_covered:
-                next_day = day_num
+
+        # Prefer a curriculum day that has not been covered
+        for day_number in target_days:
+
+            if day_number not in days_covered:
+                next_day = day_number
                 break
-        
-        # If all target days are covered, pick the one with fewest questions asked
+
+        # If all days are covered, choose the least-used day
         if next_day is None:
-            day_counts = {d: days_covered.count(d) for d in target_days}
-            next_day = min(day_counts, key=day_counts.get)
-            
-        is_followup = False
 
-    # Get details of target day
-    day_info = curriculum_service.get_day(next_day) or {}
-    day_title = day_info.get("title", "Software Engineering Concepts")
-    day_tools = day_info.get("tools", [])
-    day_objectives = day_info.get("objectives", [])
+            day_counts = {
+                day_number: days_covered.count(day_number)
+                for day_number in target_days
+            }
 
-    topic_label = f"Day {next_day}: {day_title}"
-
-    # Generate question text (Dual mode: Real LLM or Mock fallback)
-    last_message = state.get("last_message")
-    if settings.OPENAI_API_KEY:
-        try:
-            llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o-mini", temperature=0.7)
-            
-            # Format history
-            hist_str = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in history[-6:]])
-            
-            prompt = (
-                f"You are conducting a personalized, conversational technical interview for a {job_role} role.\n"
-                f"Candidate Name: {name}\n"
-                f"Experience Level: {experience_level} ({years_exp} years experience)\n"
-                f"Topic: Day {next_day} - {day_title}\n"
-                f"Tools involved: {', '.join(day_tools)}\n"
-                f"Objectives: {'; '.join(day_objectives)}\n\n"
-                f"Recent Conversation History:\n{hist_str}\n\n"
-            )
-            if is_followup:
-                prompt += (
-                    "This is a follow-up question. Use the candidate's last answer as context and ask an intelligent, "
-                    f"personalized follow-up based on their response: {last_message}."
+            if day_counts:
+                next_day = min(
+                    day_counts,
+                    key=day_counts.get,
                 )
             else:
+                next_day = 1
+
+        is_followup = False
+
+    # --------------------------------------------------------
+    # Get curriculum information
+    # --------------------------------------------------------
+
+    day_info = (
+        curriculum_service.get_day(next_day)
+        or {}
+    )
+
+    day_title = day_info.get(
+        "title",
+        "Software Engineering Concepts",
+    )
+
+    day_tools = day_info.get(
+        "tools",
+        [],
+    )
+
+    day_objectives = day_info.get(
+        "objectives",
+        [],
+    )
+
+    topic_label = (
+        f"Day {next_day}: {day_title}"
+    )
+
+    last_message = state.get("last_message")
+
+    # --------------------------------------------------------
+    # Gemini question generation
+    # --------------------------------------------------------
+
+    if settings.GOOGLE_API_KEY:
+
+        try:
+
+            llm = _create_gemini()
+
+            # Keep only recent conversation to avoid huge prompts
+            recent_history = history[-8:]
+
+            history_text = "\n".join(
+                [
+                    f"{message.get('role', 'unknown').capitalize()}: "
+                    f"{message.get('content', '')}"
+                    for message in recent_history
+                ]
+            )
+
+            tools_text = _format_tools(day_tools)
+
+            objectives_text = (
+                "; ".join(day_objectives)
+                if day_objectives
+                else "the core concepts of the topic"
+            )
+
+            previous_questions = "\n".join(
+                [
+                    f"- {question}"
+                    for question in questions_asked[-8:]
+                ]
+            )
+
+            # ------------------------------------------------
+            # Strong Gemini instruction
+            # ------------------------------------------------
+
+            prompt = (
+                "You are an expert technical interviewer "
+                "conducting a realistic software engineering "
+                "interview.\n\n"
+
+                f"Candidate name: {name}\n"
+                f"Job role: {job_role}\n"
+                f"Experience level: {experience_level}\n"
+                f"Years of experience: {years_exp}\n\n"
+
+                f"Current curriculum topic: {day_title}\n"
+                f"Relevant technologies/tools: {tools_text}\n"
+                f"Learning objectives: {objectives_text}\n\n"
+
+                f"Recent conversation:\n"
+                f"{history_text or 'No previous conversation.'}\n\n"
+
+                f"Previously asked questions:\n"
+                f"{previous_questions or 'No previous questions.'}\n\n"
+            )
+
+            if is_followup:
+
                 prompt += (
-                    "This is a new topic. Introduce the topic with a natural transition, and ask a personalized "
-                    "technical question targeting one of the day's objectives."
+                    "This is a FOLLOW-UP question.\n\n"
+
+                    f"The candidate's previous answer was:\n"
+                    f"{last_message}\n\n"
+
+                    "Analyze the candidate's previous answer and "
+                    "ask ONE meaningful follow-up question.\n"
+
+                    "The follow-up should test deeper understanding, "
+                    "reasoning, trade-offs, debugging, design choices, "
+                    "or practical implementation.\n"
+
+                    "Do not simply ask the candidate to repeat or "
+                    "rephrase their previous answer.\n"
+
+                    "Do not mention that this is a follow-up."
                 )
-            prompt += "\n\nAsk the question directly. Do not include any meta-text, headers, or prefix. Avoid repeating the exact same question as earlier turns."
-            
-            response = llm.invoke([SystemMessage(content="You are a friendly, professional AI technical interviewer."), HumanMessage(content=prompt)])
-            question = response.content.strip()
+
+            else:
+
+                prompt += (
+                    "This is a NEW topic.\n\n"
+
+                    "Ask ONE technical interview question that "
+                    "directly tests one of the listed learning "
+                    "objectives.\n"
+
+                    "The question should be appropriate for the "
+                    "candidate's experience level.\n"
+
+                    "Prefer practical and scenario-based questions "
+                    "over simple definitions.\n"
+
+                    "The question should sound like something a "
+                    "real technical interviewer would ask."
+                )
+
+            prompt += (
+                "\n\nIMPORTANT OUTPUT RULES:\n"
+                "1. Output exactly ONE interview question.\n"
+                "2. Output only the question.\n"
+                "3. Do not include 'Question:' or any heading.\n"
+                "4. Do not provide the answer.\n"
+                "5. Do not explain your reasoning.\n"
+                "6. Do not repeat an earlier question.\n"
+                "7. Keep the question clear and conversational.\n"
+                "8. Avoid awkward phrases such as 'explain how X "
+                "can be used to how Y'.\n"
+            )
+
+            response = llm.invoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are a professional AI technical "
+                            "interviewer. Your questions must be "
+                            "natural, technically meaningful, and "
+                            "grammatically correct."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ]
+            )
+
+            question = _clean_question(
+                str(response.content)
+            )
+
         except Exception:
-            # Safe fallback if API call fails
+
+            # Safe fallback if Gemini fails
             question = _build_question_text(
                 is_followup=is_followup,
                 next_day=next_day,
@@ -276,8 +731,10 @@ def generate_question(state: AgentState) -> Dict[str, Any]:
                 experience_level=experience_level,
                 years_exp=years_exp,
             )
+
     else:
-        # Mock question output
+
+        # Gemini API key not configured
         question = _build_question_text(
             is_followup=is_followup,
             next_day=next_day,
@@ -291,146 +748,365 @@ def generate_question(state: AgentState) -> Dict[str, Any]:
             years_exp=years_exp,
         )
 
-    question = _ensure_unique_question(question, questions_asked)
+    # --------------------------------------------------------
+    # Prevent duplicate questions
+    # --------------------------------------------------------
 
-    # Append to history & tracking
+    question = _ensure_unique_question(
+        question,
+        questions_asked,
+    )
+
+    # --------------------------------------------------------
+    # Update conversation history
+    # --------------------------------------------------------
+
     new_history = list(history)
-    new_history.append({"role": "assistant", "content": question})
+
+    new_history.append(
+        {
+            "role": "assistant",
+            "content": question,
+        }
+    )
+
+    # --------------------------------------------------------
+    # Update question tracking
+    # --------------------------------------------------------
+
     new_questions = list(questions_asked)
+
     new_questions.append(question)
+
     new_days_covered = list(days_covered)
+
     new_days_covered.append(next_day)
+
+    # --------------------------------------------------------
+    # Return updated state
+    # --------------------------------------------------------
 
     return {
         "conversation_history": new_history,
         "questions_asked": new_questions,
         "curriculum_days_covered": new_days_covered,
-        "number_of_questions_asked": len(new_questions),
+        "number_of_questions_asked": len(
+            new_questions
+        ),
         "current_question": question,
         "current_topic": topic_label,
-        "last_message": None  # Reset for next turn
+        "last_message": None,
     }
 
-def generate_feedback(state: AgentState) -> Dict[str, Any]:
-    """Node: Generates the final structured feedback report when the interview ends."""
-    candidate = state.get("candidate_data") or {}
-    history = state.get("conversation_history") or []
-    collected_info = state.get("collected_information") or {}
-    
-    name = candidate.get("name") or "Candidate"
-    job_role = candidate.get("jobRole") or candidate.get("job_role") or "Software Engineer"
-    
-    # Generate structured feedback (Dual mode: Real LLM or Mock fallback)
-    if settings.OPENAI_API_KEY:
+
+# ============================================================
+# GENERATE FINAL FEEDBACK
+# ============================================================
+
+def generate_feedback(
+    state: AgentState,
+) -> Dict[str, Any]:
+    """
+    Generate final structured interview feedback using Gemini.
+    """
+
+    candidate = (
+        state.get("candidate_data")
+        or {}
+    )
+
+    history = (
+        state.get("conversation_history")
+        or []
+    )
+
+    collected_info = (
+        state.get("collected_information")
+        or {}
+    )
+
+    name = candidate.get(
+        "name",
+        "Candidate",
+    )
+
+    job_role = (
+        candidate.get("jobRole")
+        or candidate.get("job_role")
+        or "Software Engineer"
+    )
+
+    # --------------------------------------------------------
+    # Gemini final evaluation
+    # --------------------------------------------------------
+
+    if settings.GOOGLE_API_KEY:
+
         try:
-            llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o-mini", temperature=0.2)
-            
-            # Format collected evaluations
-            evals_summary = ""
-            for topic, details in collected_info.items():
-                evals_summary += f"- Topic: {topic}\n  Q: {details.get('question')}\n  A: {details.get('answer')}\n  Assessment: {details.get('assessment')}\n\n"
-                
-            prompt = (
-                f"You are a principal technical evaluator writing a final interview report for candidate {name} (applying for {job_role}).\n\n"
-                f"Review the evaluations collected during the interview:\n{evals_summary}\n\n"
-                f"Generate structured feedback. You MUST output a valid JSON object matching the schema below. Do not output markdown, preambles, or postambles. Only output raw JSON:\n"
-                f"{{\n"
-                f"  \"summary\": \"Overall summary of the candidate's performance.\",\n"
-                f"  \"strengths\": [\"Strength 1\", \"Strength 2\"],\n"
-                f"  \"gaps\": [\"Gap 1\", \"Gap 2\"],\n"
-                f"  \"next\": [\"Recommendation 1\", \"Recommendation 2\"]\n"
-                f"}}"
+
+            llm = ChatGoogleGenerativeAI(
+                model=settings.LLM_MODEL,
+                google_api_key=settings.GOOGLE_API_KEY,
+                temperature=0.2,
             )
-            
-            response = llm.invoke([
-                SystemMessage(content="You are a precise technical evaluator that outputs strictly valid JSON."),
-                HumanMessage(content=prompt)
-            ])
-            
-            # Parse JSON response
-            json_text = response.content.strip()
-            # Handle markdown code blocks if the LLM outputted them despite instructions
+
+            evals = []
+
+            for topic, details in collected_info.items():
+
+                evals.append(
+                    (
+                        f"Topic: {topic}\n"
+                        f"Question: {details.get('question')}\n"
+                        f"Answer: {details.get('answer')}\n"
+                        f"Assessment: "
+                        f"{details.get('assessment')}\n"
+                    )
+                )
+
+            evals_summary = "\n".join(evals)
+
+            prompt = (
+                "You are a senior technical interviewer "
+                "writing the final evaluation of a candidate.\n\n"
+
+                f"Candidate: {name}\n"
+                f"Role: {job_role}\n\n"
+
+                "Interview evaluations:\n"
+                f"{evals_summary}\n\n"
+
+                "Based ONLY on the interview evidence above, "
+                "generate a structured evaluation.\n\n"
+
+                "Return ONLY valid JSON using exactly this structure:\n"
+
+                "{\n"
+                '  "summary": "Overall assessment",\n'
+                '  "strengths": ['
+                '"Strength 1", "Strength 2"'
+                '],\n'
+                '  "gaps": ['
+                '"Gap 1", "Gap 2"'
+                '],\n'
+                '  "next": ['
+                '"Recommendation 1", "Recommendation 2"'
+                "]\n"
+                "}\n\n"
+
+                "Rules:\n"
+                "- Do not use markdown.\n"
+                "- Do not include a preamble.\n"
+                "- Do not invent technologies that were not discussed.\n"
+                "- Keep the feedback specific to the candidate's answers."
+            )
+
+            response = llm.invoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are a precise technical evaluator "
+                            "who outputs strictly valid JSON."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ]
+            )
+
+            json_text = _normalize_text(
+                str(response.content)
+            )
+
+            # Remove markdown code fences if Gemini adds them
             if json_text.startswith("```"):
+
                 lines = json_text.splitlines()
-                if lines[0].startswith("```json") or lines[0].startswith("```"):
-                    json_text = "\n".join(lines[1:-1])
-                    
-            feedback_data = json.loads(json_text)
-        except Exception as e:
-            # Fallback mock feedback if parsing or API fails
+
+                if len(lines) >= 3:
+                    json_text = "\n".join(
+                        lines[1:-1]
+                    ).strip()
+
+            feedback_data = json.loads(
+                json_text
+            )
+
+        except Exception:
+
             feedback_data = {
-                "summary": f"Technical evaluation completed. The candidate showed solid familiarity with their completed curriculum topics.",
-                "strengths": ["Demonstrated knowledge of their listed daily syllabus modules.", "Conversational and structured answers."],
-                "gaps": ["Some specific tooling configuration details were omitted during conversation."],
-                "next": ["Review objectives and practice deployment configurations."]
+                "summary": (
+                    "The technical interview was completed "
+                    "successfully. The candidate demonstrated "
+                    "knowledge across the evaluated curriculum areas."
+                ),
+                "strengths": [
+                    "Demonstrated understanding of the "
+                    "interviewed technical concepts.",
+                    "Provided structured responses "
+                    "during the interview."
+                ],
+                "gaps": [
+                    "Some technical areas could be explored "
+                    "in greater depth."
+                ],
+                "next": [
+                    "Practice deeper system design and "
+                    "real-world implementation scenarios."
+                ],
             }
+
     else:
-        # Mock feedback
+
         feedback_data = {
-            "summary": f"Technical interview completed for {name} ({job_role}). Demonstrated comprehension across {len(collected_info)} covered syllabus areas.",
+            "summary": (
+                f"Technical interview completed for "
+                f"{name} ({job_role})."
+            ),
             "strengths": [
-                "Good familiarity with setup and development requirements.",
-                "Provided coherent code explanations during dialogue turns."
+                "Demonstrated familiarity with the "
+                "interviewed technical topics.",
+                "Provided responses throughout the interview."
             ],
             "gaps": [
-                "Could expand more on debugging multi-agent coordination states.",
-                "Deep dive into Docker network configs is recommended."
+                "Some technical concepts could be "
+                "explored in greater depth."
             ],
             "next": [
-                "Proceed to advanced deployment modules (Kubernetes/Docker).",
-                "Practice implementing mock LangGraph graphs and checkpoints."
-            ]
+                "Practice real-world implementation "
+                "and troubleshooting scenarios."
+            ],
         }
 
-    # Add final wrap-up reply text
-    reply = "Thank you for completing your interview. Your structured feedback and evaluation have been compiled successfully."
-    
+    # --------------------------------------------------------
+    # Final assistant message
+    # --------------------------------------------------------
+
+    reply = (
+        "Thank you for completing your interview. "
+        "Your structured feedback and evaluation have "
+        "been compiled successfully."
+    )
+
     new_history = list(history)
-    new_history.append({"role": "assistant", "content": reply})
+
+    new_history.append(
+        {
+            "role": "assistant",
+            "content": reply,
+        }
+    )
 
     return {
         "conversation_history": new_history,
         "is_completed": True,
-        "feedback": feedback_data
+        "feedback": feedback_data,
     }
 
-def decide_next_step(state: AgentState) -> str:
-    """Conditional Edge router: Determines if the interview has reached termination requirements."""
-    questions_count = len(state.get("questions_asked") or [])
-    days_covered = set(state.get("curriculum_days_covered") or [])
-    
+
+# ============================================================
+# DECIDE NEXT STEP
+# ============================================================
+
+def decide_next_step(
+    state: AgentState,
+) -> str:
+    """
+    Decide whether to generate another question or finish
+    the interview.
+    """
+
+    questions_count = len(
+        state.get("questions_asked") or []
+    )
+
+    days_covered = set(
+        state.get("curriculum_days_covered")
+        or []
+    )
+
     if state.get("is_completed"):
         return "generate_feedback"
 
-    # Requirement: Target at least 10 questions AND cover at least 6 unique days
-    if questions_count >= 10 and len(days_covered) >= 6:
+    # Interview requirements:
+    # At least 10 questions
+    # At least 6 unique curriculum days
+
+    if (
+        questions_count >= 10
+        and len(days_covered) >= 6
+    ):
         return "generate_feedback"
+
     return "generate_question"
 
-# Construct and compile LangGraph StateGraph
+
+# ============================================================
+# BUILD LANGGRAPH WORKFLOW
+# ============================================================
+
 workflow = StateGraph(AgentState)
 
+
+# ------------------------------------------------------------
 # Add nodes
-workflow.add_node("evaluate_answer", evaluate_answer)
-workflow.add_node("generate_question", generate_question)
-workflow.add_node("generate_feedback", generate_feedback)
+# ------------------------------------------------------------
 
-# Define entry point
-workflow.set_entry_point("evaluate_answer")
+workflow.add_node(
+    "evaluate_answer",
+    evaluate_answer,
+)
 
-# Add conditional routing
+workflow.add_node(
+    "generate_question",
+    generate_question,
+)
+
+workflow.add_node(
+    "generate_feedback",
+    generate_feedback,
+)
+
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+workflow.set_entry_point(
+    "evaluate_answer"
+)
+
+
+# ------------------------------------------------------------
+# Conditional routing
+# ------------------------------------------------------------
+
 workflow.add_conditional_edges(
     "evaluate_answer",
     decide_next_step,
     {
         "generate_question": "generate_question",
-        "generate_feedback": "generate_feedback"
-    }
+        "generate_feedback": "generate_feedback",
+    },
 )
 
-# Connect execution endpoints
-workflow.add_edge("generate_question", END)
-workflow.add_edge("generate_feedback", END)
 
-# Compile
+# ------------------------------------------------------------
+# Endpoints
+# ------------------------------------------------------------
+
+workflow.add_edge(
+    "generate_question",
+    END,
+)
+
+workflow.add_edge(
+    "generate_feedback",
+    END,
+)
+
+
+# ------------------------------------------------------------
+# Compile graph
+# ------------------------------------------------------------
+
 compiled_graph = workflow.compile()

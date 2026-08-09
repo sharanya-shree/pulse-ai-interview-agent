@@ -366,7 +366,7 @@ Typical configuration includes:
 
 ```env
 DATABASE_URL=
-OPENAI_API_KEY=
+GEMINI_API_KEY=
 LLM_MODEL=
 ```
 
