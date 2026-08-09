@@ -48,6 +48,78 @@ function clearError() {
   renderError();
 }
 
+/*
+ * Browser navigation
+ *
+ * The application is a single-page UI, so switching from the
+ * candidate-selection panel to the interview panel does not
+ * automatically create a browser history entry.
+ *
+ * We use the URL hash:
+ *
+ * Candidate selection:
+ * https://your-site.vercel.app/
+ *
+ * Interview:
+ * https://your-site.vercel.app/#interview
+ *
+ * This allows the browser Back button to return to candidate
+ * selection and Forward to return to the interview.
+ */
+function setAppRoute(route, { replace = false } = {}) {
+  const hash = route === "interview" ? "#interview" : "";
+
+  const url =
+    `${window.location.pathname}` + `${window.location.search}` + hash;
+
+  const historyState = {
+    view: route,
+  };
+
+  if (replace) {
+    window.history.replaceState(historyState, "", url);
+  } else {
+    window.history.pushState(historyState, "", url);
+  }
+}
+
+function handleBrowserNavigation() {
+  const route = window.location.hash;
+
+  if (route === "#interview") {
+    /*
+     * If the interview is already active in this browser session,
+     * restore the interview panel when the user presses Forward.
+     */
+    if (state.selectedCandidate && state.currentInterviewStarted) {
+      showInterviewView();
+      return;
+    }
+
+    /*
+     * If somebody directly opens /#interview or refreshes it,
+     * the interview state cannot be restored because it is stored
+     * only in memory.
+     *
+     * Therefore safely return to candidate selection.
+     */
+    setAppRoute("selection", { replace: true });
+    showCandidateSelection();
+    return;
+  }
+
+  /*
+   * Empty hash = candidate-selection view.
+   *
+   * We intentionally do not reset the interview state here.
+   * This means:
+   *
+   * Back     -> candidate selection
+   * Forward  -> interview again
+   */
+  showCandidateSelection();
+}
+
 function getActivePanel() {
   if (!elements.interviewPanel.classList.contains("hidden")) {
     return elements.interviewPanel;
@@ -68,6 +140,7 @@ function renderError() {
   }
 
   const errorNode = document.createElement("div");
+
   errorNode.className = "error-banner";
   errorNode.textContent = state.error;
 
@@ -76,7 +149,9 @@ function renderError() {
 
 function buildSessionId(candidate) {
   if (candidate?.member?.id) {
-    return `demo-${candidate.member.id.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+    return `demo-${candidate.member.id
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
   }
 
   return `demo-session-${Date.now()}`;
@@ -99,7 +174,11 @@ function createCandidateCard(candidate) {
 
   card.innerHTML = `
     <h3>${member.name || "Candidate"}</h3>
-    <p>${member.jobRole || "Role pending"}</p>
+
+    <p>
+      ${member.jobRole || "Role pending"}
+    </p>
+
     <p>
       ${
         member.yearsExperience != null
@@ -107,6 +186,7 @@ function createCandidateCard(candidate) {
           : "Experience pending"
       }
     </p>
+
     <p>
       ${
         completedDays.length
@@ -151,7 +231,9 @@ function renderCandidateSummary() {
   const summaryText =
     `${member.name || "Candidate"} is a ` +
     `${member.jobRole || "professional"} with ` +
-    `${member.yearsExperience != null ? member.yearsExperience : "a growing"} ` +
+    `${
+      member.yearsExperience != null ? member.yearsExperience : "a growing"
+    } ` +
     `years of experience. Their learning profile highlights ` +
     `${completedDays.length} completed milestones and strong momentum ` +
     `across the curriculum.`;
@@ -233,7 +315,15 @@ function showCandidateSelection() {
 
   elements.completionPanel.classList.add("hidden");
 
-  elements.candidateSummary.classList.remove("hidden");
+  /*
+   * Keep the selected candidate summary visible when returning
+   * with the browser Back button.
+   */
+  if (state.selectedCandidate) {
+    elements.candidateSummary.classList.remove("hidden");
+  } else {
+    elements.candidateSummary.classList.add("hidden");
+  }
 
   elements.answerForm.classList.add("hidden");
 }
@@ -249,23 +339,15 @@ function showCompletionView() {
 }
 
 function renderProgress() {
-  const count = Math.min(
-    Math.max(state.questionCount, 0),
-    TOTAL_QUESTIONS
-  );
+  const count = Math.min(Math.max(state.questionCount, 0), TOTAL_QUESTIONS);
 
-  const percent = Math.round(
-    (count / TOTAL_QUESTIONS) * 100
-  );
+  const percent = Math.round((count / TOTAL_QUESTIONS) * 100);
 
-  elements.progressLabel.textContent =
-    `Question ${count} of ${TOTAL_QUESTIONS}`;
+  elements.progressLabel.textContent = `Question ${count} of ${TOTAL_QUESTIONS}`;
 
-  elements.progressPercent.textContent =
-    `${percent}%`;
+  elements.progressPercent.textContent = `${percent}%`;
 
-  elements.progressBar.style.width =
-    `${percent}%`;
+  elements.progressBar.style.width = `${percent}%`;
 }
 
 function appendMessage(role, content) {
@@ -283,6 +365,7 @@ function renderFeedback(feedback) {
     elements.feedbackContent.innerHTML = `
       <div class="feedback-card">
         <h3>No feedback available</h3>
+
         <p>
           The interview ended without structured feedback.
         </p>
@@ -295,41 +378,42 @@ function renderFeedback(feedback) {
   const cards = [
     {
       title: "Summary",
-      items: feedback.summary
-        ? [feedback.summary]
-        : [],
+
+      items: feedback.summary ? [feedback.summary] : [],
     },
 
     {
       title: "Strengths",
+
       items: feedback.strengths || [],
     },
 
     {
       title: "Gaps",
+
       items: feedback.gaps || [],
     },
 
     {
       title: "Next",
+
       items: feedback.next || [],
     },
   ];
 
   elements.feedbackContent.innerHTML = cards
     .map((card) => {
-      const items = card.items.length
-        ? card.items
-        : ["None recorded"];
+      const items = card.items.length ? card.items : ["None recorded"];
 
-      const list = items
-        .map((item) => `<li>${item}</li>`)
-        .join("");
+      const list = items.map((item) => `<li>${item}</li>`).join("");
 
       return `
         <div class="feedback-card">
           <h3>${card.title}</h3>
-          <ul>${list}</ul>
+
+          <ul>
+            ${list}
+          </ul>
         </div>
       `;
     })
@@ -338,328 +422,283 @@ function renderFeedback(feedback) {
 
 async function loadCandidates() {
   try {
-    const payload =
-      await requestJson("/api/candidates");
+    const payload = await requestJson("/api/candidates");
 
-    state.candidates =
-      payload.candidates || [];
+    state.candidates = payload.candidates || [];
 
     if (!state.candidates.length) {
-      throw new Error(
-        "No candidates were returned by the backend."
-      );
+      throw new Error("No candidates were returned by the backend.");
     }
 
     renderCandidateSelection();
 
     if (!state.selectedCandidate) {
-      state.selectedCandidate =
-        state.candidates[0];
+      state.selectedCandidate = state.candidates[0];
 
       renderCandidateSummary();
     }
-
   } catch (error) {
-    setError(
-      error.message ||
-      "Unable to load candidates from the backend."
-    );
+    setError(error.message || "Unable to load candidates from the backend.");
   }
 }
 
 async function startInterview() {
   if (!state.selectedCandidate) {
-    setError(
-      "Choose a candidate before starting the interview."
-    );
+    setError("Choose a candidate before starting the interview.");
 
     return;
   }
 
   state.isLoading = true;
 
-  elements.startInterviewButton.disabled =
-    true;
+  elements.startInterviewButton.disabled = true;
 
-  elements.submitAnswerButton.disabled =
-    true;
+  elements.submitAnswerButton.disabled = true;
 
-  elements.formHint.textContent =
-    "Starting interview…";
+  elements.formHint.textContent = "Starting interview…";
 
   clearError();
 
   try {
     const requestBody = {
-      sessionId:
-        buildSessionId(
-          state.selectedCandidate
-        ),
+      sessionId: buildSessionId(state.selectedCandidate),
 
       candidate: {
-        id:
-          state.selectedCandidate.member?.id,
+        id: state.selectedCandidate.member?.id,
 
-        name:
-          state.selectedCandidate.member?.name,
+        name: state.selectedCandidate.member?.name,
 
-        experienceLevel:
-          state.selectedCandidate.member?.jobRole,
+        experienceLevel: state.selectedCandidate.member?.jobRole,
 
-        completedDays:
-          (
-            state.selectedCandidate.missions || []
-          )
-            .filter(
-              (mission) => mission.passed
-            )
-            .map(
-              (mission) => mission.day
-            ),
+        completedDays: (state.selectedCandidate.missions || [])
+          .filter((mission) => mission.passed)
+          .map((mission) => mission.day),
 
-        jobRole:
-          state.selectedCandidate.member?.jobRole,
+        jobRole: state.selectedCandidate.member?.jobRole,
 
-        yearsExperience:
-          state.selectedCandidate.member
-            ?.yearsExperience,
+        yearsExperience: state.selectedCandidate.member?.yearsExperience,
 
-        education:
-          state.selectedCandidate.member
-            ?.education,
+        education: state.selectedCandidate.member?.education,
       },
     };
 
-    const payload =
-      await requestJson(
-        "/api/interview",
-        {
-          method: "POST",
+    const payload = await requestJson("/api/interview", {
+      method: "POST",
 
-          body: JSON.stringify(
-            requestBody
-          ),
-        }
-      );
+      body: JSON.stringify(requestBody),
+    });
 
-    state.sessionId =
-      requestBody.sessionId;
+    state.sessionId = requestBody.sessionId;
 
-    state.currentInterviewStarted =
-      true;
+    state.currentInterviewStarted = true;
 
-    // The first response from the backend
-    // is already Question 1.
+    /*
+     * IMPORTANT:
+     *
+     * Add a browser history entry only after
+     * the backend successfully starts the interview.
+     *
+     * Now:
+     *
+     * Candidate page
+     *       ↓
+     * Interview page
+     *       ↓
+     * Browser Back
+     *       ↓
+     * Candidate page
+     */
+    setAppRoute("interview");
+
+    /*
+     * The first response from the backend
+     * is already Question 1.
+     */
     state.questionCount = 1;
 
     showInterviewView();
 
-    elements.interviewTitle.textContent =
-      `Interview with ${
-        state.selectedCandidate.member
-          ?.name || "candidate"
-      }`;
+    elements.interviewTitle.textContent = `Interview with ${
+      state.selectedCandidate.member?.name || "candidate"
+    }`;
 
     appendMessage(
       "system",
-      "Interview started. The interviewer will ask a series of technical questions."
+      "Interview started. The interviewer will ask a series of technical questions.",
     );
 
-    appendMessage(
-      "assistant",
-      payload.reply ||
-      "Welcome! Let us begin."
-    );
+    appendMessage("assistant", payload.reply || "Welcome! Let us begin.");
 
     elements.formHint.textContent =
       "Submit your first answer to continue the interview.";
 
     renderProgress();
-
   } catch (error) {
-    setError(
-      error.message ||
-      "Unable to start the interview."
-    );
-
+    setError(error.message || "Unable to start the interview.");
   } finally {
     state.isLoading = false;
 
-    elements.startInterviewButton.disabled =
-      false;
+    elements.startInterviewButton.disabled = false;
 
-    elements.submitAnswerButton.disabled =
-      false;
+    elements.submitAnswerButton.disabled = false;
   }
 }
 
 async function submitAnswer(event) {
   event.preventDefault();
 
-  if (
-    state.isLoading ||
-    !state.currentInterviewStarted ||
-    !state.sessionId
-  ) {
+  if (state.isLoading || !state.currentInterviewStarted || !state.sessionId) {
     return;
   }
 
-  const answer =
-    elements.answerInput.value.trim();
+  const answer = elements.answerInput.value.trim();
 
   if (!answer) {
-    setError(
-      "Enter an answer before submitting."
-    );
+    setError("Enter an answer before submitting.");
 
     return;
   }
 
   state.isLoading = true;
 
-  elements.submitAnswerButton.disabled =
-    true;
+  elements.submitAnswerButton.disabled = true;
 
-  elements.answerInput.disabled =
-    true;
+  elements.answerInput.disabled = true;
 
-  elements.formHint.textContent =
-    "Submitting answer…";
+  elements.formHint.textContent = "Submitting answer…";
 
   clearError();
 
   try {
-    const payload =
-      await requestJson(
-        "/api/interview",
-        {
-          method: "POST",
+    const payload = await requestJson("/api/interview", {
+      method: "POST",
 
-          body: JSON.stringify({
-            sessionId:
-              state.sessionId,
+      body: JSON.stringify({
+        sessionId: state.sessionId,
 
-            message:
-              answer,
-          }),
-        }
-      );
+        message: answer,
+      }),
+    });
 
-    appendMessage(
-      "user",
-      answer
-    );
+    appendMessage("user", answer);
 
-    appendMessage(
-      "assistant",
-      payload.reply ||
-      "Thanks for your response."
-    );
+    appendMessage("assistant", payload.reply || "Thanks for your response.");
 
     /*
      * If the backend says the interview is done,
      * do not increase the question count again.
      */
     if (payload.done) {
-      state.currentInterviewStarted =
-        false;
+      state.currentInterviewStarted = false;
 
       showCompletionView();
 
-      elements.interviewTitle.textContent =
-        "Interview complete";
+      elements.interviewTitle.textContent = "Interview complete";
 
-      renderFeedback(
-        payload.feedback
-      );
+      renderFeedback(payload.feedback);
 
       elements.formHint.textContent =
         "The interview is complete. You can start another one.";
-
     } else {
       /*
        * The backend has returned the NEXT question.
        * Therefore increment the question number.
        */
-      state.questionCount =
-        Math.min(
-          state.questionCount + 1,
-          TOTAL_QUESTIONS
-        );
+      state.questionCount = Math.min(state.questionCount + 1, TOTAL_QUESTIONS);
 
       renderProgress();
 
-      elements.answerInput.value =
-        "";
+      elements.answerInput.value = "";
 
-      elements.answerInput.disabled =
-        false;
+      elements.answerInput.disabled = false;
 
       elements.formHint.textContent =
         "Answer the next question when you are ready.";
     }
-
   } catch (error) {
-    setError(
-      error.message ||
-      "Unable to submit the answer."
-    );
-
+    setError(error.message || "Unable to submit the answer.");
   } finally {
     state.isLoading = false;
 
-    elements.submitAnswerButton.disabled =
-      false;
+    elements.submitAnswerButton.disabled = false;
 
-    elements.answerInput.disabled =
-      false;
+    elements.answerInput.disabled = false;
   }
 }
 
 function attachEvents() {
-  elements.startInterviewButton.addEventListener(
-    "click",
-    startInterview
-  );
+  elements.startInterviewButton.addEventListener("click", startInterview);
 
-  elements.restartInterviewButton.addEventListener(
-    "click",
-    () => {
-      resetInterviewView();
-      showCandidateSelection();
-    }
-  );
+  elements.restartInterviewButton.addEventListener("click", () => {
+    resetInterviewView();
 
-  elements.newInterviewButton.addEventListener(
-    "click",
-    () => {
-      resetInterviewView();
-      showCandidateSelection();
-    }
-  );
+    /*
+     * Replace instead of push because this is
+     * an intentional "start over" action.
+     */
+    setAppRoute("selection", {
+      replace: true,
+    });
 
-  elements.finishNewInterviewButton.addEventListener(
-    "click",
-    () => {
-      resetInterviewView();
-      showCandidateSelection();
-    }
-  );
+    showCandidateSelection();
+  });
 
-  elements.answerForm.addEventListener(
-    "submit",
-    submitAnswer
-  );
+  elements.newInterviewButton.addEventListener("click", () => {
+    resetInterviewView();
+
+    setAppRoute("selection", {
+      replace: true,
+    });
+
+    showCandidateSelection();
+  });
+
+  elements.finishNewInterviewButton.addEventListener("click", () => {
+    resetInterviewView();
+
+    setAppRoute("selection", {
+      replace: true,
+    });
+
+    showCandidateSelection();
+  });
+
+  /*
+   * Listen for Chrome/Edge/Firefox Back and Forward buttons.
+   */
+  window.addEventListener("popstate", handleBrowserNavigation);
+
+  elements.answerForm.addEventListener("submit", submitAnswer);
 }
 
 function initialize() {
   attachEvents();
+
+  /*
+   * A fresh page load starts at candidate selection.
+   *
+   * If someone manually opens /#interview,
+   * handleBrowserNavigation() will safely return
+   * them to candidate selection because the interview
+   * state only exists in memory.
+   */
+  if (window.location.hash !== "#interview") {
+    setAppRoute("selection", {
+      replace: true,
+    });
+  }
 
   renderCandidateSelection();
 
   renderCandidateSummary();
 
   loadCandidates();
+
+  /*
+   * Restore the correct panel for the current
+   * browser route.
+   */
+  handleBrowserNavigation();
 }
 
 initialize();
