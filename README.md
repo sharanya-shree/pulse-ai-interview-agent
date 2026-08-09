@@ -42,6 +42,52 @@ The repository contains a working end-to-end hackathon demo:
 
 ---
 
+## Deployment
+
+The application is deployed as separate frontend and backend services.
+
+### Frontend Deployment
+
+The static frontend is deployed on Vercel.
+
+**Live URL:**
+https://pulse-ai-interview-agent.vercel.app
+
+### Backend Deployment
+
+The FastAPI backend is deployed on Render.
+
+**Backend URL:**
+https://pulse-ai-interview-backend.onrender.com
+
+The frontend is configured to communicate with the deployed FastAPI backend through its API base URL.
+
+### Deployment Architecture
+
+```text
+                    User
+                      |
+                      v
+             +----------------+
+             |    Vercel      |
+             |    Frontend    |
+             | HTML/CSS/JS    |
+             +----------------+
+                      |
+                      | HTTP API Requests
+                      v
+             +----------------+
+             |    Render      |
+             | FastAPI Backend|
+             +----------------+
+                      |
+                      v
+             +----------------+
+             | Interview      |
+             | Workflow + DB  |
+             +----------------+
+```
+
 ## Technology Stack
 
 | Layer | Technology |
@@ -404,7 +450,7 @@ Session information can include:
 
 For local development/demo environments, the project also contains a SQLite fallback so the application can be exercised when PostgreSQL is unavailable.
 
-Generated local database files are ignored by Git.
+Local generated database files are ignored by Git unless intentionally included as part of the hackathon demo.
 
 ---
 
